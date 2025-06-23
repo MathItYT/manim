@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from manim.mobject.opengl.opengl_mobject import OpenGLMobject
-
 from .. import config, logger
 from ..constants import RendererType
 from ..mobject import mobject
 from ..mobject.mobject import Group, Mobject
-from ..mobject.opengl import opengl_mobject
 from ..utils.rate_functions import linear, smooth
 
 __all__ = ["Animation", "Wait", "Add", "override_animation"]
@@ -152,14 +149,8 @@ class Animation:
         self.suspend_mobject_updating: bool = suspend_mobject_updating
         self.lag_ratio: float = lag_ratio
         self._on_finish: Callable[[Scene], None] = _on_finish
-        if config["renderer"] == RendererType.OPENGL:
-            self.starting_mobject: OpenGLMobject = OpenGLMobject()
-            self.mobject: OpenGLMobject = (
-                mobject if mobject is not None else OpenGLMobject()
-            )
-        else:
-            self.starting_mobject: Mobject = Mobject()
-            self.mobject: Mobject = mobject if mobject is not None else Mobject()
+        self.starting_mobject: Mobject = Mobject()
+        self.mobject: Mobject = mobject if mobject is not None else Mobject()
 
         if hasattr(self, "CONFIG"):
             logger.error(
@@ -185,8 +176,6 @@ class Animation:
     def _typecheck_input(self, mobject: Mobject | None) -> None:
         if mobject is None:
             logger.debug("Animation with empty mobject")
-        elif not isinstance(mobject, (Mobject, OpenGLMobject)):
-            raise TypeError("Animation only works on Mobjects")
 
     def __str__(self) -> str:
         if self.name:
@@ -279,8 +268,6 @@ class Animation:
         return self.mobject, self.starting_mobject
 
     def get_all_families_zipped(self) -> Iterable[tuple]:
-        if config["renderer"] == RendererType.OPENGL:
-            return zip(*(mob.get_family() for mob in self.get_all_mobjects()))
         return zip(
             *(mob.family_members_with_points() for mob in self.get_all_mobjects())
         )
@@ -569,9 +556,6 @@ def prepare_animation(
 
     """
     if isinstance(anim, mobject._AnimationBuilder):
-        return anim.build()
-
-    if isinstance(anim, opengl_mobject._AnimationBuilder):
         return anim.build()
 
     if isinstance(anim, Animation):

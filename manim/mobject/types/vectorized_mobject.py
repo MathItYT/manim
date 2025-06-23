@@ -24,8 +24,6 @@ from manim import config
 from manim.constants import *
 from manim.mobject.mobject import Mobject
 from manim.mobject.opengl.opengl_compatibility import ConvertToOpenGL
-from manim.mobject.opengl.opengl_mobject import OpenGLMobject
-from manim.mobject.opengl.opengl_vectorized_mobject import OpenGLVMobject
 from manim.mobject.three_d.three_d_utils import (
     get_3d_vmob_gradient_start_and_end_points,
 )
@@ -2222,23 +2220,21 @@ class VGroup(VMobject, metaclass=ConvertToOpenGL):
                 f"{type(invalid_obj).__name__}."
             )
 
-        vmobject_render_type = (
-            OpenGLVMobject if config.renderer == RendererType.OPENGL else VMobject
-        )
+        vmobject_render_type = VMobject
         valid_vmobjects = []
 
         for i, vmobject in enumerate(vmobjects):
             if isinstance(vmobject, vmobject_render_type):
                 valid_vmobjects.append(vmobject)
             elif isinstance(vmobject, Iterable) and not isinstance(
-                vmobject, (Mobject, OpenGLMobject)
+                vmobject, Mobject
             ):
                 for j, subvmobject in enumerate(vmobject):
                     if not isinstance(subvmobject, vmobject_render_type):
                         raise TypeError(get_type_error_message(subvmobject, (i, j)))
                     valid_vmobjects.append(subvmobject)
             elif isinstance(vmobject, Iterable) and isinstance(
-                vmobject, (Mobject, OpenGLMobject)
+                vmobject, Mobject
             ):
                 raise TypeError(
                     f"{get_type_error_message(vmobject, (i, 0))} "
@@ -2646,7 +2642,7 @@ class VectorizedPoint(VMobject, metaclass=ConvertToOpenGL):
         )
         self.set_points(np.array([location]))
 
-    basecls = OpenGLVMobject if config.renderer == RendererType.OPENGL else VMobject
+    basecls = VMobject
 
     @basecls.width.getter
     def width(self) -> float:

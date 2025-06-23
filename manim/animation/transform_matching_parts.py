@@ -8,9 +8,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from manim.mobject.opengl.opengl_mobject import OpenGLGroup, OpenGLMobject
-from manim.mobject.opengl.opengl_vectorized_mobject import OpenGLVGroup, OpenGLVMobject
-
 from .._config import config
 from ..constants import RendererType
 from ..mobject.mobject import Group, Mobject
@@ -76,11 +73,7 @@ class TransformMatchingAbstractBase(AnimationGroup):
         key_map: dict | None = None,
         **kwargs,
     ):
-        if isinstance(mobject, OpenGLVMobject):
-            group_type = OpenGLVGroup
-        elif isinstance(mobject, OpenGLMobject):
-            group_type = OpenGLGroup
-        elif isinstance(mobject, VMobject):
+        if isinstance(mobject, VMobject):
             group_type = VGroup
         else:
             group_type = Group
@@ -145,10 +138,7 @@ class TransformMatchingAbstractBase(AnimationGroup):
         for sm in self.get_mobject_parts(mobject):
             key = self.get_mobject_key(sm)
             if key not in shape_map:
-                if config["renderer"] == RendererType.OPENGL:
-                    shape_map[key] = OpenGLVGroup()
-                else:
-                    shape_map[key] = VGroup()
+                shape_map[key] = VGroup()
             shape_map[key].add(sm)
         return shape_map
 
@@ -281,7 +271,7 @@ class TransformMatchingTex(TransformMatchingAbstractBase):
 
     @staticmethod
     def get_mobject_parts(mobject: Mobject) -> list[Mobject]:
-        if isinstance(mobject, (Group, VGroup, OpenGLGroup, OpenGLVGroup)):
+        if isinstance(mobject, (Group, VGroup)):
             return [
                 p
                 for s in mobject.submobjects

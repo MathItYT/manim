@@ -12,14 +12,12 @@ from manim._config import config
 from manim.animation.animation import Animation, prepare_animation
 from manim.constants import RendererType
 from manim.mobject.mobject import Group, Mobject
-from manim.mobject.opengl.opengl_mobject import OpenGLGroup
 from manim.scene.scene import Scene
 from manim.utils.iterables import remove_list_redundancies
 from manim.utils.parameter_parsing import flatten_iterable_parameters
 from manim.utils.rate_functions import linear
 
 if TYPE_CHECKING:
-    from manim.mobject.opengl.opengl_vectorized_mobject import OpenGLVGroup
     from manim.mobject.types.vectorized_mobject import VGroup
 
 __all__ = ["AnimationGroup", "Succession", "LaggedStart", "LaggedStartMap"]
@@ -55,7 +53,7 @@ class AnimationGroup(Animation):
     def __init__(
         self,
         *animations: Animation | Iterable[Animation] | types.GeneratorType[Animation],
-        group: Group | VGroup | OpenGLGroup | OpenGLVGroup = None,
+        group: Group | VGroup = None,
         run_time: float | None = None,
         rate_func: Callable[[float], float] = linear,
         lag_ratio: float = 0,
@@ -69,10 +67,7 @@ class AnimationGroup(Animation):
             mobjects = remove_list_redundancies(
                 [anim.mobject for anim in self.animations if not anim.is_introducer()],
             )
-            if config["renderer"] == RendererType.OPENGL:
-                self.group = OpenGLGroup(*mobjects)
-            else:
-                self.group = Group(*mobjects)
+            self.group = Group(*mobjects)
         super().__init__(
             self.group, rate_func=self.rate_func, lag_ratio=lag_ratio, **kwargs
         )

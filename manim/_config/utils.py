@@ -835,10 +835,6 @@ class ManimConfig(MutableMapping):
         if args.tex_template:
             self.tex_template = TexTemplate.from_file(args.tex_template)
 
-        if self.renderer == RendererType.OPENGL and args.write_to_movie is None:
-            # --write_to_movie was not passed on the command line, so don't generate video.
-            self["write_to_movie"] = False
-
         # Handle --gui_location flag.
         if args.gui_location is not None:
             self.gui_location = args.gui_location
@@ -994,15 +990,6 @@ class ManimConfig(MutableMapping):
     @enable_wireframe.setter
     def enable_wireframe(self, value: bool) -> None:
         self._set_boolean("enable_wireframe", value)
-
-    @property
-    def force_window(self) -> bool:
-        """Whether to force window when using the opengl renderer."""
-        return self._d["force_window"]
-
-    @force_window.setter
-    def force_window(self, value: bool) -> None:
-        self._set_boolean("force_window", value)
 
     @property
     def no_latex_cleanup(self) -> bool:
@@ -1349,7 +1336,7 @@ class ManimConfig(MutableMapping):
             >>> test_config.renderer = 'OpenGL'
             >>> test_config.renderer = 'cAirO'
         """
-        return self._d["renderer"]
+        return RendererType.CANVAS
 
     @renderer.setter
     def renderer(self, value: str | RendererType) -> None:
@@ -1358,41 +1345,7 @@ class ManimConfig(MutableMapping):
         Takes care of switching inheritance bases using the
         :class:`.ConvertToOpenGL` metaclass.
         """
-        if isinstance(value, str):
-            value = value.lower()
-        renderer = RendererType(value)
-        try:
-            from manim.mobject.opengl.opengl_compatibility import ConvertToOpenGL
-            from manim.mobject.opengl.opengl_mobject import OpenGLMobject
-            from manim.mobject.opengl.opengl_vectorized_mobject import OpenGLVMobject
-
-            from ..mobject.mobject import Mobject
-            from ..mobject.types.vectorized_mobject import VMobject
-
-            for cls in ConvertToOpenGL._converted_classes:
-                if renderer == RendererType.OPENGL:
-                    conversion_dict = {
-                        Mobject: OpenGLMobject,
-                        VMobject: OpenGLVMobject,
-                    }
-                else:
-                    conversion_dict = {
-                        OpenGLMobject: Mobject,
-                        OpenGLVMobject: VMobject,
-                    }
-
-                cls.__bases__ = tuple(
-                    conversion_dict.get(base, base) for base in cls.__bases__
-                )
-        except ImportError:
-            # The renderer is set during the initial import of the
-            # library for the first time. The imports above cause an
-            # ImportError due to circular imports. However, the
-            # metaclass sets stuff up correctly in this case, so we
-            # can just do nothing.
-            pass
-
-        self._set_from_enum("renderer", renderer, RendererType)
+        pass
 
     @property
     def media_dir(self) -> str:

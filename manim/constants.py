@@ -6,7 +6,6 @@ from enum import Enum
 from typing import TypedDict
 
 import numpy as np
-from cloup import Context
 from PIL.Image import Resampling
 
 from manim.typing import Vector3D
@@ -70,7 +69,6 @@ __all__ = [
     "QUALITIES",
     "DEFAULT_QUALITY",
     "EPILOG",
-    "CONTEXT_SETTINGS",
     "SHIFT_VALUE",
     "CTRL_VALUE",
     "RendererType",
@@ -252,12 +250,6 @@ EPILOG = "Made with <3 by Manim Community developers."
 SHIFT_VALUE = 65505
 CTRL_VALUE = 65507
 
-CONTEXT_SETTINGS = Context.settings(
-    align_option_groups=True,
-    align_sections=True,
-    show_constraints=True,
-)
-
 
 class RendererType(Enum):
     """An enumeration of all renderer types that can be assigned to
@@ -275,8 +267,7 @@ class RendererType(Enum):
         <RendererType.OPENGL: 'opengl'>
     """
 
-    CAIRO = "cairo"  #: A renderer based on the cairo backend.
-    OPENGL = "opengl"  #: An OpenGL-based renderer.
+    CANVAS = "canvas"  #: A renderer based on the HTML5 canvas element.
 
 
 class LineJointType(Enum):

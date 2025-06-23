@@ -8,8 +8,6 @@ import numpy as np
 
 __all__ = ["LogBase", "LinearBase"]
 
-from manim.mobject.text.numbers import Integer
-
 if TYPE_CHECKING:
     from manim.mobject.mobject import Mobject
 
@@ -158,31 +156,3 @@ class LogBase(_ScaleBase):
             )
         value = func(value, self.base)
         return value
-
-    def get_custom_labels(
-        self,
-        val_range: Iterable[float],
-        unit_decimal_places: int = 0,
-        **base_config: dict[str, Any],
-    ) -> list[Mobject]:
-        """Produces custom :class:`~.Integer` labels in the form of ``10^2``.
-
-        Parameters
-        ----------
-        val_range
-            The iterable of values used to create the labels. Determines the exponent.
-        unit_decimal_places
-            The number of decimal places to include in the exponent
-        base_config
-            Additional arguments to be passed to :class:`~.Integer`.
-        """
-        # uses `format` syntax to control the number of decimal places.
-        tex_labels = [
-            Integer(
-                self.base,
-                unit="^{%s}" % (f"{self.inverse_function(i):.{unit_decimal_places}f}"),  # noqa: UP031
-                **base_config,
-            )
-            for i in val_range
-        ]
-        return tex_labels

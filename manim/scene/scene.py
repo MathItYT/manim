@@ -12,38 +12,24 @@ import inspect
 import platform
 import random
 import threading
+from pyodide.ffi import create_proxy
+from pyodide.code import run_js
 import time
+import asyncio
 import types
 from queue import Queue
 
-import srt
-
-from manim.scene.section import DefaultSectionType
-
-try:
-    import dearpygui.dearpygui as dpg
-
-    dearpygui_imported = True
-except ImportError:
-    dearpygui_imported = False
 from typing import TYPE_CHECKING
 
 import numpy as np
-from tqdm import tqdm
-from watchdog.events import FileSystemEventHandler
-from watchdog.observers import Observer
 
 from manim.mobject.mobject import Mobject
-from manim.mobject.opengl.opengl_mobject import OpenGLPoint
 
 from .. import config, logger
 from ..animation.animation import Animation, Wait, prepare_animation
 from ..camera.camera import Camera
 from ..constants import *
-from ..gui.gui import configure_pygui
-from ..renderer.cairo_renderer import CairoRenderer
-from ..renderer.opengl_renderer import OpenGLRenderer
-from ..renderer.shader import Object3D
+from ..renderer.canvas_renderer import CanvasRenderer
 from ..utils import opengl, space_ops
 from ..utils.exceptions import EndSceneEarlyException, RerunSceneException
 from ..utils.family import extract_mobject_family_members
@@ -56,17 +42,6 @@ if TYPE_CHECKING:
     from typing import Callable
 
     from manim.mobject.mobject import _AnimationBuilder
-
-
-class RerunSceneHandler(FileSystemEventHandler):
-    """A class to handle rerunning a Scene after the input file is modified."""
-
-    def __init__(self, queue):
-        super().__init__()
-        self.queue = queue
-
-    def on_modified(self, event):
-        self.queue.put(("rerun_file", [], {}))
 
 
 class Scene:
@@ -102,7 +77,7 @@ class Scene:
 
     def __init__(
         self,
-        renderer: CairoRenderer | OpenGLRenderer | None = None,
+        renderer: CanvasRenderer | None = None,
         camera_class: type[Camera] = Camera,
         always_update_mobjects: bool = False,
         random_seed: int | None = None,
@@ -117,7 +92,6 @@ class Scene:
         self.stop_condition = None
         self.moving_mobjects = []
         self.static_mobjects = []
-        self.time_progression = None
         self.duration = None
         self.last_t = None
         self.queue = Queue()
@@ -125,7 +99,6 @@ class Scene:
         self.meshes = []
         self.camera_target = ORIGIN
         self.widgets = []
-        self.dearpygui_imported = dearpygui_imported
         self.updaters = []
         self.point_lights = []
         self.ambient_light = None
@@ -133,15 +106,8 @@ class Scene:
         self.mouse_press_callbacks = []
         self.interactive_mode = False
 
-        if config.renderer == RendererType.OPENGL:
-            # Items associated with interaction
-            self.mouse_point = OpenGLPoint()
-            self.mouse_drag_point = OpenGLPoint()
-            if renderer is None:
-                renderer = OpenGLRenderer()
-
         if renderer is None:
-            self.renderer = CairoRenderer(
+            self.renderer = CanvasRenderer(
                 camera_class=self.camera_class,
                 skip_animations=self.skip_animations,
             )
@@ -222,8 +188,21 @@ class Scene:
             if len(cloned_updaters) > 0:
                 result.mobject_updater_lists.append((mobject_clone, cloned_updaters))
         return result
+    
+    @property
+    def canvas(self):
+        """The canvas element of the renderer."""
+        return self.renderer.canvas
+    
+    @property
+    def ctx(self):
+        """The context of the canvas element of the renderer."""
+        return self.renderer.ctx
+    
+    async def render_frame(self) -> None:
+        await self.renderer.render(self, self.time, self.moving_mobjects)
 
-    def render(self, preview: bool = False):
+    async def render(self, preview: bool = False):
         """
         Renders this Scene.
 
@@ -232,9 +211,34 @@ class Scene:
         preview
             If true, opens scene in a file viewer.
         """
-        self.setup()
+        self.canvas.addEventListener(
+            "mousedown",
+            create_proxy(self.on_mouse_down),
+        )
+        self.canvas.addEventListener(
+            "mouseup",
+            create_proxy(self.on_mouse_up),
+        )
+        self.canvas.addEventListener(
+            "mousemove",
+            create_proxy(self.on_mouse_move),
+        )
+        self.canvas.addEventListener(
+            "click",
+            create_proxy(self.on_mouse_click),
+        )
+        self.canvas.addEventListener(
+            "keydown",
+            create_proxy(self.on_key_down),
+        )
+        self.canvas.addEventListener(
+            "keyup",
+            create_proxy(self.on_key_up),
+        )
+        await self.camera.reset()
+        await self.setup()
         try:
-            self.construct()
+            await self.construct()
         except EndSceneEarlyException:
             pass
         except RerunSceneException:
@@ -242,7 +246,7 @@ class Scene:
             self.renderer.clear_screen()
             self.renderer.num_plays = 0
             return True
-        self.tear_down()
+        await self.tear_down()
         # We have to reset these settings in case of multiple renders.
         self.renderer.scene_finished(self)
 
@@ -259,11 +263,52 @@ class Scene:
         # If preview open up the render after rendering.
         if preview:
             config["preview"] = True
+    
+    async def on_mouse_click(
+        self,
+        event,
+    ) -> None:
+        """
+        Called when a mouse click event occurs.
 
-        if config["preview"] or config["show_in_file_browser"]:
-            open_media_file(self.renderer.file_writer)
+        Parameters
+        ----------
+        event
+            The mouse click event.
+        """
+        pass
+    
+    async def on_mouse_down(
+        self,
+        event,
+    ) -> None:
+        pass
 
-    def setup(self):
+    async def on_mouse_up(
+        self,
+        event,
+    ) -> None:
+        pass
+
+    async def on_mouse_move(
+        self,
+        event,
+    ) -> None:
+        pass
+
+    async def on_key_down(
+        self,
+        event,
+    ) -> None:
+        pass
+
+    async def on_key_up(
+        self,
+        event,
+    ) -> None:
+        pass
+
+    async def setup(self):
         """
         This is meant to be implemented by any scenes which
         are commonly subclassed, and have some common setup
@@ -271,7 +316,7 @@ class Scene:
         """
         pass
 
-    def tear_down(self):
+    async def tear_down(self):
         """
         This is meant to be implemented by any scenes which
         are commonly subclassed, and have some common method
@@ -279,7 +324,7 @@ class Scene:
         """
         pass
 
-    def construct(self):
+    async def construct(self):
         """Add content to the Scene.
 
         From within :meth:`Scene.construct`, display mobjects on screen by calling
@@ -311,18 +356,6 @@ class Scene:
 
         """
         pass  # To be implemented in subclasses
-
-    def next_section(
-        self,
-        name: str = "unnamed",
-        section_type: str = DefaultSectionType.NORMAL,
-        skip_animations: bool = False,
-    ) -> None:
-        """Create separation here; the last section gets finished and a new one gets created.
-        ``skip_animations`` skips the rendering of all animations in this section.
-        Refer to :doc:`the documentation</tutorials/output_and_config>` on how to use sections.
-        """
-        self.renderer.file_writer.next_section(name, section_type, skip_animations)
 
     def __str__(self):
         return self.__class__.__name__
@@ -437,16 +470,14 @@ class Scene:
         list
             List of mobject family members.
         """
-        if config.renderer == RendererType.OPENGL:
-            family_members = []
-            for mob in self.mobjects:
-                family_members.extend(mob.get_family())
-            return family_members
-        elif config.renderer == RendererType.CAIRO:
+        if config.renderer == RendererType.CANVAS:
             return extract_mobject_family_members(
                 self.mobjects,
                 use_z_index=self.renderer.camera.use_z_index,
             )
+        raise NotImplementedError(
+            "get_mobject_family_members is not implemented for the active renderer."
+        )
 
     def add(self, *mobjects: Mobject):
         """
@@ -464,19 +495,7 @@ class Scene:
             The same scene after adding the Mobjects in.
 
         """
-        if config.renderer == RendererType.OPENGL:
-            new_mobjects = []
-            new_meshes = []
-            for mobject_or_mesh in mobjects:
-                if isinstance(mobject_or_mesh, Object3D):
-                    new_meshes.append(mobject_or_mesh)
-                else:
-                    new_mobjects.append(mobject_or_mesh)
-            self.remove(*new_mobjects)
-            self.mobjects += new_mobjects
-            self.remove(*new_meshes)
-            self.meshes += new_meshes
-        elif config.renderer == RendererType.CAIRO:
+        if config.renderer == RendererType.CANVAS:
             mobjects = [*mobjects, *self.foreground_mobjects]
             self.restructure_mobjects(to_remove=mobjects)
             self.mobjects += mobjects
@@ -511,23 +530,7 @@ class Scene:
         *mobjects
             The mobjects to remove.
         """
-        if config.renderer == RendererType.OPENGL:
-            mobjects_to_remove = []
-            meshes_to_remove = set()
-            for mobject_or_mesh in mobjects:
-                if isinstance(mobject_or_mesh, Object3D):
-                    meshes_to_remove.add(mobject_or_mesh)
-                else:
-                    mobjects_to_remove.append(mobject_or_mesh)
-            self.mobjects = restructure_list_to_exclude_certain_family_members(
-                self.mobjects,
-                mobjects_to_remove,
-            )
-            self.meshes = list(
-                filter(lambda mesh: mesh not in set(meshes_to_remove), self.meshes),
-            )
-            return self
-        elif config.renderer == RendererType.CAIRO:
+        if config.renderer == RendererType.CANVAS:
             for list_name in "mobjects", "foreground_mobjects":
                 self.restructure_mobjects(mobjects, list_name, False)
             return self
@@ -922,106 +925,6 @@ class Scene:
 
         return animations
 
-    def _get_animation_time_progression(
-        self, animations: list[Animation], duration: float
-    ):
-        """
-        You will hardly use this when making your own animations.
-        This method is for Manim's internal use.
-
-        Uses :func:`~.get_time_progression` to obtain a
-        CommandLine ProgressBar whose ``fill_time`` is
-        dependent on the qualities of the passed Animation,
-
-        Parameters
-        ----------
-        animations
-            The list of animations to get
-            the time progression for.
-
-        duration
-            duration of wait time
-
-        Returns
-        -------
-        time_progression
-            The CommandLine Progress Bar.
-        """
-        if len(animations) == 1 and isinstance(animations[0], Wait):
-            stop_condition = animations[0].stop_condition
-            if stop_condition is not None:
-                time_progression = self.get_time_progression(
-                    duration,
-                    f"Waiting for {stop_condition.__name__}",
-                    n_iterations=-1,  # So it doesn't show % progress
-                    override_skip_animations=True,
-                )
-            else:
-                time_progression = self.get_time_progression(
-                    duration,
-                    f"Waiting {self.renderer.num_plays}",
-                )
-        else:
-            time_progression = self.get_time_progression(
-                duration,
-                "".join(
-                    [
-                        f"Animation {self.renderer.num_plays}: ",
-                        str(animations[0]),
-                        (", etc." if len(animations) > 1 else ""),
-                    ],
-                ),
-            )
-        return time_progression
-
-    def get_time_progression(
-        self,
-        run_time: float,
-        description,
-        n_iterations: int | None = None,
-        override_skip_animations: bool = False,
-    ):
-        """
-        You will hardly use this when making your own animations.
-        This method is for Manim's internal use.
-
-        Returns a CommandLine ProgressBar whose ``fill_time``
-        is dependent on the ``run_time`` of an animation,
-        the iterations to perform in that animation
-        and a bool saying whether or not to consider
-        the skipped animations.
-
-        Parameters
-        ----------
-        run_time
-            The ``run_time`` of the animation.
-
-        n_iterations
-            The number of iterations in the animation.
-
-        override_skip_animations
-            Whether or not to show skipped animations in the progress bar.
-
-        Returns
-        -------
-        time_progression
-            The CommandLine Progress Bar.
-        """
-        if self.renderer.skip_animations and not override_skip_animations:
-            times = [run_time]
-        else:
-            step = 1 / config["frame_rate"]
-            times = np.arange(0, run_time, step)
-        time_progression = tqdm(
-            times,
-            desc=description,
-            total=n_iterations,
-            leave=config["progress_bar"] == "leave",
-            ascii=True if platform.system() == "Windows" else None,
-            disable=config["progress_bar"] == "none",
-        )
-        return time_progression
-
     @classmethod
     def validate_run_time(
         cls,
@@ -1070,7 +973,7 @@ class Scene:
         run_time = self.validate_run_time(run_time, self.play, "total run_time")
         return run_time
 
-    def play(
+    async def play(
         self,
         *args: Animation | Mobject | _AnimationBuilder,
         subcaption=None,
@@ -1099,30 +1002,9 @@ class Scene:
             All other keywords are passed to the renderer.
 
         """
-        # If we are in interactive embedded mode, make sure this is running on the main thread (required for OpenGL)
-        if (
-            self.interactive_mode
-            and config.renderer == RendererType.OPENGL
-            and threading.current_thread().name != "MainThread"
-        ):
-            kwargs.update(
-                {
-                    "subcaption": subcaption,
-                    "subcaption_duration": subcaption_duration,
-                    "subcaption_offset": subcaption_offset,
-                }
-            )
-            self.queue.put(
-                (
-                    "play",
-                    args,
-                    kwargs,
-                )
-            )
-            return
 
         start_time = self.time
-        self.renderer.play(self, *args, **kwargs)
+        await self.renderer.play(self, *args, **kwargs)
         run_time = self.time - start_time
         if subcaption:
             if subcaption_duration is None:
@@ -1137,7 +1019,7 @@ class Scene:
                 offset=-run_time + subcaption_offset,
             )
 
-    def wait(
+    async def wait(
         self,
         duration: float = DEFAULT_WAIT_TIME,
         stop_condition: Callable[[], bool] | None = None,
@@ -1165,7 +1047,7 @@ class Scene:
         :class:`.Wait`, :meth:`.should_mobjects_update`
         """
         duration = self.validate_run_time(duration, self.wait, "duration")
-        self.play(
+        await self.play(
             Wait(
                 run_time=duration,
                 stop_condition=stop_condition,
@@ -1173,7 +1055,7 @@ class Scene:
             )
         )
 
-    def pause(self, duration: float = DEFAULT_WAIT_TIME):
+    async def pause(self, duration: float = DEFAULT_WAIT_TIME):
         """Pauses the scene (i.e., displays a frozen frame).
 
         This is an alias for :meth:`.wait` with ``frozen_frame``
@@ -1189,9 +1071,9 @@ class Scene:
         :meth:`.wait`, :class:`.Wait`
         """
         duration = self.validate_run_time(duration, self.pause, "duration")
-        self.wait(duration=duration, frozen_frame=True)
+        await self.wait(duration=duration, frozen_frame=True)
 
-    def wait_until(self, stop_condition: Callable[[], bool], max_time: float = 60):
+    async def wait_until(self, stop_condition: Callable[[], bool], max_time: float = 60):
         """Wait until a condition is satisfied, up to a given maximum duration.
 
         Parameters
@@ -1203,7 +1085,7 @@ class Scene:
             The maximum wait time in seconds.
         """
         max_time = self.validate_run_time(max_time, self.wait_until, "max_time")
-        self.wait(max_time, stop_condition=stop_condition)
+        await self.wait(max_time, stop_condition=stop_condition)
 
     def compile_animation_data(
         self,
@@ -1259,13 +1141,31 @@ class Scene:
             animation._setup_scene(self)
             animation.begin()
 
-        if config.renderer == RendererType.CAIRO:
+        if config.renderer == RendererType.CANVAS:
             # Paint all non-moving objects onto the screen, so they don't
             # have to be rendered every frame
             (
                 self.moving_mobjects,
                 self.static_mobjects,
             ) = self.get_moving_and_static_mobjects(self.animations)
+    
+    @property
+    def static_mobjects(self) -> list[Mobject]:
+        return []
+    
+    @static_mobjects.setter
+    def static_mobjects(self, value: list[Mobject]):
+        pass
+
+    @property
+    def moving_mobjects(self) -> list[Mobject]:
+        """The list of mobjects that are currently moving in the scene."""
+        return self.mobjects
+    
+    @moving_mobjects.setter
+    def moving_mobjects(self, value: list[Mobject]):
+        """Set the list of mobjects that are currently moving in the scene."""
+        pass
 
     def is_current_animation_frozen_frame(self) -> bool:
         """Returns whether the current animation produces a static frame (generally a Wait)."""
@@ -1275,7 +1175,7 @@ class Scene:
             and self.animations[0].is_static_wait
         )
 
-    def play_internal(self, skip_rendering: bool = False):
+    async def play_internal(self, skip_rendering: bool = False):
         """
         This method is used to prep the animations for rendering,
         apply the arguments and parameters required to them,
@@ -1287,17 +1187,15 @@ class Scene:
             Whether the rendering should be skipped, by default False
         """
         self.duration = self.get_run_time(self.animations)
-        self.time_progression = self._get_animation_time_progression(
-            self.animations,
-            self.duration,
-        )
-        for t in self.time_progression:
+        val = int(1000 / self.camera.frame_rate)
+        for t in np.arange(0, self.duration, 1 / self.camera.frame_rate):
+            future = run_js(f"new Promise((resolve) => setTimeout(resolve, {val}))")
             self.update_to_time(t)
             if not skip_rendering and not self.skip_animation_preview:
-                self.renderer.render(self, t, self.moving_mobjects)
+                await self.renderer.render(self, t, self.moving_mobjects)
             if self.stop_condition is not None and self.stop_condition():
-                self.time_progression.close()
                 break
+            await future
 
         for animation in self.animations:
             animation.finish()
@@ -1305,225 +1203,6 @@ class Scene:
         if not self.renderer.skip_animations:
             self.update_mobjects(0)
         self.renderer.static_image = None
-        # Closing the progress bar at the end of the play.
-        self.time_progression.close()
-
-    def check_interactive_embed_is_valid(self):
-        if config["force_window"]:
-            return True
-        if self.skip_animation_preview:
-            logger.warning(
-                "Disabling interactive embed as 'skip_animation_preview' is enabled",
-            )
-            return False
-        elif config["write_to_movie"]:
-            logger.warning("Disabling interactive embed as 'write_to_movie' is enabled")
-            return False
-        elif config["format"]:
-            logger.warning(
-                "Disabling interactive embed as '--format' is set as "
-                + config["format"],
-            )
-            return False
-        elif not self.renderer.window:
-            logger.warning("Disabling interactive embed as no window was created")
-            return False
-        elif config.dry_run:
-            logger.warning("Disabling interactive embed as dry_run is enabled")
-            return False
-        return True
-
-    def interactive_embed(self):
-        """Like embed(), but allows for screen interaction."""
-        if not self.check_interactive_embed_is_valid():
-            return
-        self.interactive_mode = True
-
-        def ipython(shell, namespace):
-            import manim.opengl
-
-            def load_module_into_namespace(module, namespace):
-                for name in dir(module):
-                    namespace[name] = getattr(module, name)
-
-            load_module_into_namespace(manim, namespace)
-            load_module_into_namespace(manim.opengl, namespace)
-
-            def embedded_rerun(*args, **kwargs):
-                self.queue.put(("rerun_keyboard", args, kwargs))
-                shell.exiter()
-
-            namespace["rerun"] = embedded_rerun
-
-            shell(local_ns=namespace)
-            self.queue.put(("exit_keyboard", [], {}))
-
-        def get_embedded_method(method_name):
-            return lambda *args, **kwargs: self.queue.put((method_name, args, kwargs))
-
-        local_namespace = inspect.currentframe().f_back.f_locals
-        for method in ("play", "wait", "add", "remove"):
-            embedded_method = get_embedded_method(method)
-            # Allow for calling scene methods without prepending 'self.'.
-            local_namespace[method] = embedded_method
-
-        from sqlite3 import connect
-
-        from IPython.core.getipython import get_ipython
-        from IPython.terminal.embed import InteractiveShellEmbed
-        from traitlets.config import Config
-
-        cfg = Config()
-        cfg.TerminalInteractiveShell.confirm_exit = False
-        if get_ipython() is None:
-            shell = InteractiveShellEmbed.instance(config=cfg)
-        else:
-            shell = InteractiveShellEmbed(config=cfg)
-        hist = get_ipython().history_manager
-        hist.db = connect(hist.hist_file, check_same_thread=False)
-
-        keyboard_thread = threading.Thread(
-            target=ipython,
-            args=(shell, local_namespace),
-        )
-        # run as daemon to kill thread when main thread exits
-        if not shell.pt_app:
-            keyboard_thread.daemon = True
-        keyboard_thread.start()
-
-        if self.dearpygui_imported and config["enable_gui"]:
-            if not dpg.is_dearpygui_running():
-                gui_thread = threading.Thread(
-                    target=configure_pygui,
-                    args=(self.renderer, self.widgets),
-                    kwargs={"update": False},
-                )
-                gui_thread.start()
-            else:
-                configure_pygui(self.renderer, self.widgets, update=True)
-
-        self.camera.model_matrix = self.camera.default_model_matrix
-
-        self.interact(shell, keyboard_thread)
-
-    def interact(self, shell, keyboard_thread):
-        event_handler = RerunSceneHandler(self.queue)
-        file_observer = Observer()
-        file_observer.schedule(event_handler, config["input_file"], recursive=True)
-        file_observer.start()
-
-        self.quit_interaction = False
-        keyboard_thread_needs_join = shell.pt_app is not None
-        assert self.queue.qsize() == 0
-
-        last_time = time.time()
-        while not (self.renderer.window.is_closing or self.quit_interaction):
-            if not self.queue.empty():
-                tup = self.queue.get_nowait()
-                if tup[0].startswith("rerun"):
-                    # Intentionally skip calling join() on the file thread to save time.
-                    if not tup[0].endswith("keyboard"):
-                        if shell.pt_app:
-                            shell.pt_app.app.exit(exception=EOFError)
-                        file_observer.unschedule_all()
-                        raise RerunSceneException
-                    keyboard_thread.join()
-
-                    kwargs = tup[2]
-                    if "from_animation_number" in kwargs:
-                        config["from_animation_number"] = kwargs[
-                            "from_animation_number"
-                        ]
-                    # # TODO: This option only makes sense if interactive_embed() is run at the
-                    # # end of a scene by default.
-                    # if "upto_animation_number" in kwargs:
-                    #     config["upto_animation_number"] = kwargs[
-                    #         "upto_animation_number"
-                    #     ]
-
-                    keyboard_thread.join()
-                    file_observer.unschedule_all()
-                    raise RerunSceneException
-                elif tup[0].startswith("exit"):
-                    # Intentionally skip calling join() on the file thread to save time.
-                    if not tup[0].endswith("keyboard") and shell.pt_app:
-                        shell.pt_app.app.exit(exception=EOFError)
-                    keyboard_thread.join()
-                    # Remove exit_keyboard from the queue if necessary.
-                    while self.queue.qsize() > 0:
-                        self.queue.get()
-                    keyboard_thread_needs_join = False
-                    break
-                else:
-                    method, args, kwargs = tup
-                    getattr(self, method)(*args, **kwargs)
-            else:
-                self.renderer.animation_start_time = 0
-                dt = time.time() - last_time
-                last_time = time.time()
-                self.renderer.render(self, dt, self.moving_mobjects)
-                self.update_mobjects(dt)
-                self.update_meshes(dt)
-                self.update_self(dt)
-
-        # Join the keyboard thread if necessary.
-        if shell is not None and keyboard_thread_needs_join:
-            shell.pt_app.app.exit(exception=EOFError)
-            keyboard_thread.join()
-            # Remove exit_keyboard from the queue if necessary.
-            while self.queue.qsize() > 0:
-                self.queue.get()
-
-        file_observer.stop()
-        file_observer.join()
-
-        if self.dearpygui_imported and config["enable_gui"]:
-            dpg.stop_dearpygui()
-
-        if self.renderer.window.is_closing:
-            self.renderer.window.destroy()
-
-    def embed(self):
-        if not config["preview"]:
-            logger.warning("Called embed() while no preview window is available.")
-            return
-        if config["write_to_movie"]:
-            logger.warning("embed() is skipped while writing to a file.")
-            return
-
-        self.renderer.animation_start_time = 0
-        self.renderer.render(self, -1, self.moving_mobjects)
-
-        # Configure IPython shell.
-        from IPython.terminal.embed import InteractiveShellEmbed
-
-        shell = InteractiveShellEmbed()
-
-        # Have the frame update after each command
-        shell.events.register(
-            "post_run_cell",
-            lambda *a, **kw: self.renderer.render(self, -1, self.moving_mobjects),
-        )
-
-        # Use the locals of the caller as the local namespace
-        # once embedded, and add a few custom shortcuts.
-        local_ns = inspect.currentframe().f_back.f_locals
-        # local_ns["touch"] = self.interact
-        for method in (
-            "play",
-            "wait",
-            "add",
-            "remove",
-            "interact",
-            # "clear",
-            # "save_state",
-            # "restore",
-        ):
-            local_ns[method] = getattr(self, method)
-        shell(local_ns=local_ns, stack_depth=2)
-
-        # End scene when exiting an embed.
-        raise Exception("Exiting scene.")
 
     def update_to_time(self, t):
         dt = t - self.last_t
@@ -1535,235 +1214,3 @@ class Scene:
         self.update_mobjects(dt)
         self.update_meshes(dt)
         self.update_self(dt)
-
-    def add_subcaption(
-        self, content: str, duration: float = 1, offset: float = 0
-    ) -> None:
-        r"""Adds an entry in the corresponding subcaption file
-        at the current time stamp.
-
-        The current time stamp is obtained from ``Scene.time``.
-
-        Parameters
-        ----------
-
-        content
-            The subcaption content.
-        duration
-            The duration (in seconds) for which the subcaption is shown.
-        offset
-            This offset (in seconds) is added to the starting time stamp
-            of the subcaption.
-
-        Examples
-        --------
-
-        This example illustrates both possibilities for adding
-        subcaptions to Manimations::
-
-            class SubcaptionExample(Scene):
-                def construct(self):
-                    square = Square()
-                    circle = Circle()
-
-                    # first option: via the add_subcaption method
-                    self.add_subcaption("Hello square!", duration=1)
-                    self.play(Create(square))
-
-                    # second option: within the call to Scene.play
-                    self.play(
-                        Transform(square, circle), subcaption="The square transforms."
-                    )
-
-        """
-        subtitle = srt.Subtitle(
-            index=len(self.renderer.file_writer.subcaptions),
-            content=content,
-            start=datetime.timedelta(seconds=float(self.time + offset)),
-            end=datetime.timedelta(seconds=float(self.time + offset + duration)),
-        )
-        self.renderer.file_writer.subcaptions.append(subtitle)
-
-    def add_sound(
-        self,
-        sound_file: str,
-        time_offset: float = 0,
-        gain: float | None = None,
-        **kwargs,
-    ):
-        """
-        This method is used to add a sound to the animation.
-
-        Parameters
-        ----------
-
-        sound_file
-            The path to the sound file.
-        time_offset
-            The offset in the sound file after which
-            the sound can be played.
-        gain
-            Amplification of the sound.
-
-        Examples
-        --------
-        .. manim:: SoundExample
-            :no_autoplay:
-
-            class SoundExample(Scene):
-                # Source of sound under Creative Commons 0 License. https://freesound.org/people/Druminfected/sounds/250551/
-                def construct(self):
-                    dot = Dot().set_color(GREEN)
-                    self.add_sound("click.wav")
-                    self.add(dot)
-                    self.wait()
-                    self.add_sound("click.wav")
-                    dot.set_color(BLUE)
-                    self.wait()
-                    self.add_sound("click.wav")
-                    dot.set_color(RED)
-                    self.wait()
-
-        Download the resource for the previous example `here <https://github.com/ManimCommunity/manim/blob/main/docs/source/_static/click.wav>`_ .
-        """
-        if self.renderer.skip_animations:
-            return
-        time = self.time + time_offset
-        self.renderer.file_writer.add_sound(sound_file, time, gain, **kwargs)
-
-    def on_mouse_motion(self, point, d_point):
-        self.mouse_point.move_to(point)
-        if SHIFT_VALUE in self.renderer.pressed_keys:
-            shift = -d_point
-            shift[0] *= self.camera.get_width() / 2
-            shift[1] *= self.camera.get_height() / 2
-            transform = self.camera.inverse_rotation_matrix
-            shift = np.dot(np.transpose(transform), shift)
-            self.camera.shift(shift)
-
-    def on_mouse_scroll(self, point, offset):
-        if not config.use_projection_stroke_shaders:
-            factor = 1 + np.arctan(-2.1 * offset[1])
-            self.camera.scale(factor, about_point=self.camera_target)
-        self.mouse_scroll_orbit_controls(point, offset)
-
-    def on_key_press(self, symbol, modifiers):
-        try:
-            char = chr(symbol)
-        except OverflowError:
-            logger.warning("The value of the pressed key is too large.")
-            return
-
-        if char == "r":
-            self.camera.to_default_state()
-            self.camera_target = np.array([0, 0, 0], dtype=np.float32)
-        elif char == "q":
-            self.quit_interaction = True
-        else:
-            if char in self.key_to_function_map:
-                self.key_to_function_map[char]()
-
-    def on_key_release(self, symbol, modifiers):
-        pass
-
-    def on_mouse_drag(self, point, d_point, buttons, modifiers):
-        self.mouse_drag_point.move_to(point)
-        if buttons == 1:
-            self.camera.increment_theta(-d_point[0])
-            self.camera.increment_phi(d_point[1])
-        elif buttons == 4:
-            camera_x_axis = self.camera.model_matrix[:3, 0]
-            horizontal_shift_vector = -d_point[0] * camera_x_axis
-            vertical_shift_vector = -d_point[1] * np.cross(OUT, camera_x_axis)
-            total_shift_vector = horizontal_shift_vector + vertical_shift_vector
-            self.camera.shift(1.1 * total_shift_vector)
-
-        self.mouse_drag_orbit_controls(point, d_point, buttons, modifiers)
-
-    def mouse_scroll_orbit_controls(self, point, offset):
-        camera_to_target = self.camera_target - self.camera.get_position()
-        camera_to_target *= np.sign(offset[1])
-        shift_vector = 0.01 * camera_to_target
-        self.camera.model_matrix = (
-            opengl.translation_matrix(*shift_vector) @ self.camera.model_matrix
-        )
-
-    def mouse_drag_orbit_controls(self, point, d_point, buttons, modifiers):
-        # Left click drag.
-        if buttons == 1:
-            # Translate to target the origin and rotate around the z axis.
-            self.camera.model_matrix = (
-                opengl.rotation_matrix(z=-d_point[0])
-                @ opengl.translation_matrix(*-self.camera_target)
-                @ self.camera.model_matrix
-            )
-
-            # Rotation off of the z axis.
-            camera_position = self.camera.get_position()
-            camera_y_axis = self.camera.model_matrix[:3, 1]
-            axis_of_rotation = space_ops.normalize(
-                np.cross(camera_y_axis, camera_position),
-            )
-            rotation_matrix = space_ops.rotation_matrix(
-                d_point[1],
-                axis_of_rotation,
-                homogeneous=True,
-            )
-
-            maximum_polar_angle = self.camera.maximum_polar_angle
-            minimum_polar_angle = self.camera.minimum_polar_angle
-
-            potential_camera_model_matrix = rotation_matrix @ self.camera.model_matrix
-            potential_camera_location = potential_camera_model_matrix[:3, 3]
-            potential_camera_y_axis = potential_camera_model_matrix[:3, 1]
-            sign = (
-                np.sign(potential_camera_y_axis[2])
-                if potential_camera_y_axis[2] != 0
-                else 1
-            )
-            potential_polar_angle = sign * np.arccos(
-                potential_camera_location[2]
-                / np.linalg.norm(potential_camera_location),
-            )
-            if minimum_polar_angle <= potential_polar_angle <= maximum_polar_angle:
-                self.camera.model_matrix = potential_camera_model_matrix
-            else:
-                sign = np.sign(camera_y_axis[2]) if camera_y_axis[2] != 0 else 1
-                current_polar_angle = sign * np.arccos(
-                    camera_position[2] / np.linalg.norm(camera_position),
-                )
-                if potential_polar_angle > maximum_polar_angle:
-                    polar_angle_delta = maximum_polar_angle - current_polar_angle
-                else:
-                    polar_angle_delta = minimum_polar_angle - current_polar_angle
-                rotation_matrix = space_ops.rotation_matrix(
-                    polar_angle_delta,
-                    axis_of_rotation,
-                    homogeneous=True,
-                )
-                self.camera.model_matrix = rotation_matrix @ self.camera.model_matrix
-
-            # Translate to target the original target.
-            self.camera.model_matrix = (
-                opengl.translation_matrix(*self.camera_target)
-                @ self.camera.model_matrix
-            )
-        # Right click drag.
-        elif buttons == 4:
-            camera_x_axis = self.camera.model_matrix[:3, 0]
-            horizontal_shift_vector = -d_point[0] * camera_x_axis
-            vertical_shift_vector = -d_point[1] * np.cross(OUT, camera_x_axis)
-            total_shift_vector = horizontal_shift_vector + vertical_shift_vector
-
-            self.camera.model_matrix = (
-                opengl.translation_matrix(*total_shift_vector)
-                @ self.camera.model_matrix
-            )
-            self.camera_target += total_shift_vector
-
-    def set_key_function(self, char, func):
-        self.key_to_function_map[char] = func
-
-    def on_mouse_press(self, point, button, modifiers):
-        for func in self.mouse_press_callbacks:
-            func()

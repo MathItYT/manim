@@ -7,8 +7,6 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
-from .cli_colors import parse_cli_ctx
-from .logger_utils import make_logger
 from .utils import ManimConfig, ManimFrame, make_config_parser
 
 __all__ = [
@@ -18,7 +16,6 @@ __all__ = [
     "config",
     "frame",
     "tempconfig",
-    "cli_ctx_settings",
 ]
 
 parser = make_config_parser()
@@ -27,11 +24,7 @@ parser = make_config_parser()
 # logging.getLogger("manim").  The console must be accessed as manim.console.
 # Throughout the codebase, use manim.console.print() instead of print().
 # Use error_console to print errors so that it outputs to stderr.
-logger, console, error_console = make_logger(
-    parser["logger"],
-    parser["CLI"]["verbosity"],
-)
-cli_ctx_settings = parse_cli_ctx(parser["CLI_CTX"])
+logger, console, error_console = logging.getLogger("manim"), logging.getLogger("manim.console"), logging.getLogger("manim.error_console")
 # TODO: temporary to have a clean terminal output when working with PIL or matplotlib
 logging.getLogger("PIL").setLevel(logging.INFO)
 logging.getLogger("matplotlib").setLevel(logging.INFO)

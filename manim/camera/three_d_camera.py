@@ -21,10 +21,26 @@ from manim.mobject.value_tracker import ValueTracker
 from .. import config
 from ..camera.camera import Camera
 from ..constants import *
-from ..mobject.types.point_cloud_mobject import Point
 from ..utils.color import get_shaded_rgb
 from ..utils.family import extract_mobject_family_members
 from ..utils.space_ops import rotation_about_z, rotation_matrix
+
+
+class Point(Mobject):
+    """A point in 3D space, used to represent the camera's position and light source."""
+
+    def __init__(self, point=ORIGIN, **kwargs):
+        """Initializes a Point object.
+
+        Parameters
+        ----------
+        point : np.ndarray or list or tuple
+            The coordinates of the point in 3D space.
+        *kwargs
+            Any keyword argument of Mobject.
+        """
+        super().__init__(**kwargs)
+        self.points = np.array([point], dtype=np.float64)
 
 
 class ThreeDCamera(Camera):
@@ -49,7 +65,7 @@ class ThreeDCamera(Camera):
         *kwargs
             Any keyword argument of Camera.
         """
-        self._frame_center = Point(kwargs.get("frame_center", ORIGIN), stroke_width=0)
+        self._frame_center = Point(kwargs.get("frame_center", ORIGIN))
         super().__init__(**kwargs)
         self.focal_distance = focal_distance
         self.phi = phi
@@ -80,9 +96,9 @@ class ThreeDCamera(Camera):
     def frame_center(self, point):
         self._frame_center.move_to(point)
 
-    def capture_mobjects(self, mobjects, **kwargs):
+    async def capture_mobjects(self, mobjects, **kwargs):
         self.reset_rotation_matrix()
-        super().capture_mobjects(mobjects, **kwargs)
+        await super().capture_mobjects(mobjects, **kwargs)
 
     def get_value_trackers(self):
         """A list of :class:`ValueTrackers <.ValueTracker>` of phi, theta, focal_distance,

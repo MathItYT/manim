@@ -6,13 +6,10 @@ from pathlib import Path
 from subprocess import run
 from typing import TypedDict
 
-import av
-
 from manim.typing import StrOrBytesPath
 
 __all__ = [
     "capture",
-    "get_video_metadata",
     "get_dir_layout",
 ]
 
@@ -41,28 +38,6 @@ class VideoMetadata(TypedDict):
     codec_name: str
     pix_fmt: str
 
-
-def get_video_metadata(path_to_video: str | os.PathLike) -> VideoMetadata:
-    with av.open(str(path_to_video)) as container:
-        stream = container.streams.video[0]
-        ctxt = stream.codec_context
-        rate = stream.average_rate
-        if stream.duration is not None:
-            duration = float(stream.duration * stream.time_base)
-            num_frames = stream.frames
-        else:
-            num_frames = sum(1 for _ in container.decode(video=0))
-            duration = float(num_frames / stream.base_rate)
-
-        return {
-            "width": ctxt.width,
-            "height": ctxt.height,
-            "nb_frames": str(num_frames),
-            "duration": f"{duration:.6f}",
-            "avg_frame_rate": f"{rate.numerator}/{rate.denominator}",  # Can be a Fraction
-            "codec_name": stream.codec_context.name,
-            "pix_fmt": stream.codec_context.pix_fmt,
-        }
 
 
 def get_dir_layout(dirpath: Path) -> Generator[str, None, None]:

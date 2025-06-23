@@ -33,8 +33,6 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 
-from manim.mobject.opengl.opengl_mobject import OpenGLGroup, OpenGLMobject
-
 from .. import config
 from ..animation.animation import Animation
 from ..constants import (
@@ -202,10 +200,7 @@ class Transform(Animation):
         self.target_copy = self.target_mobject.copy()
         # Note, this potentially changes the structure
         # of both mobject and target_mobject
-        if config.renderer == RendererType.OPENGL:
-            self.mobject.align_data_and_family(self.target_copy)
-        else:
-            self.mobject.align_data(self.target_copy)
+        self.mobject.align_data(self.target_copy)
         super().begin()
 
     def create_target(self) -> Mobject:
@@ -232,8 +227,6 @@ class Transform(Animation):
             self.starting_mobject,
             self.target_copy,
         ]
-        if config.renderer == RendererType.OPENGL:
-            return zip(*(mob.get_family() for mob in mobs))
         return zip(*(mob.family_members_with_points() for mob in mobs))
 
     def interpolate_submobject(
@@ -481,7 +474,7 @@ class ApplyMethod(Transform):
                 "Whoops, looks like you accidentally invoked "
                 "the method you want to animate",
             )
-        assert isinstance(method.__self__, (Mobject, OpenGLMobject))
+        assert isinstance(method.__self__, Mobject)
 
     def create_target(self) -> Mobject:
         method = self.method
@@ -625,7 +618,7 @@ class ApplyFunction(Transform):
 
     def create_target(self) -> Any:
         target = self.function(self.mobject.copy())
-        if not isinstance(target, (Mobject, OpenGLMobject)):
+        if not isinstance(target, Mobject):
             raise TypeError(
                 "Functions passed to ApplyFunction must return object of type Mobject",
             )
@@ -838,10 +831,7 @@ class FadeTransform(Transform):
         self.stretch = stretch
         self.dim_to_match = dim_to_match
         mobject.save_state()
-        if config.renderer == RendererType.OPENGL:
-            group = OpenGLGroup(mobject, target_mobject.copy())
-        else:
-            group = Group(mobject, target_mobject.copy())
+        group = Group(mobject, target_mobject.copy())
         super().__init__(group, **kwargs)
 
     def begin(self):
