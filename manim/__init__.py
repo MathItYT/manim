@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-from __future__ import annotations
-
-from importlib.metadata import version
-
-__version__ = version(__name__)
-
-
-# isort: off
-
 # Importing the config module should be the first thing we do, since other
 # modules depend on the global config dict for initialization.
 from ._config import *
@@ -78,16 +68,5 @@ from .utils.sounds import *
 from .utils.space_ops import *
 from .utils.tex import *
 from .utils.tex_templates import *
-
-try:
-    from IPython import get_ipython
-
-    from .utils.ipython_magic import ManimMagic
-except ImportError:
-    pass
-else:
-    ipy = get_ipython()
-    if ipy is not None:
-        ipy.register_magics(ManimMagic)
 
 from .plugins import *
