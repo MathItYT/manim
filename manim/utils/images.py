@@ -18,7 +18,6 @@ from PIL import Image
 from manim.typing import RGBPixelArray
 
 from .. import config
-from ..utils.file_ops import seek_full_path_from_defaults
 
 if TYPE_CHECKING:
     pass

@@ -58,7 +58,6 @@ from .utils import color, rate_functions, unit
 from .utils.bezier import *
 from .utils.color import *
 from .utils.config_ops import *
-from .utils.file_ops import *
 from .utils.images import *
 from .utils.iterables import *
 from .utils.paths import *

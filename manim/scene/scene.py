@@ -7,15 +7,10 @@ from manim.utils.parameter_parsing import flatten_iterable_parameters
 __all__ = ["Scene"]
 
 import copy
-import datetime
 import inspect
-import platform
 import random
-import threading
 from pyodide.ffi import create_proxy
 from pyodide.code import run_js
-import time
-import asyncio
 import types
 from queue import Queue
 
@@ -30,11 +25,8 @@ from ..animation.animation import Animation, Wait, prepare_animation
 from ..camera.camera import Camera
 from ..constants import *
 from ..renderer.canvas_renderer import CanvasRenderer
-from ..utils import opengl, space_ops
 from ..utils.exceptions import EndSceneEarlyException, RerunSceneException
 from ..utils.family import extract_mobject_family_members
-from ..utils.family_ops import restructure_list_to_exclude_certain_family_members
-from ..utils.file_ops import open_media_file
 from ..utils.iterables import list_difference_update, list_update
 
 if TYPE_CHECKING:
