@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
+from io import StringIO
 from xml.etree import ElementTree as ET
 
 import numpy as np
@@ -13,7 +12,6 @@ from manim import config, logger
 
 from ...constants import RIGHT
 from ...utils.bezier import get_quadratic_approximation_of_cubic
-from ...utils.images import get_full_vector_image_path
 from ...utils.iterables import hash_obj
 from ..geometry.arc import Circle
 from ..geometry.line import Line
@@ -94,7 +92,7 @@ class SVGMobject(VMobject, metaclass=ConvertToOpenGL):
 
     def __init__(
         self,
-        file_name: str | os.PathLike | None = None,
+        content: str | None = None,
         should_center: bool = True,
         height: float | None = 2,
         width: float | None = None,
@@ -110,10 +108,13 @@ class SVGMobject(VMobject, metaclass=ConvertToOpenGL):
         use_svg_cache: bool = True,
         **kwargs,
     ):
+        if content is None:
+            raise ValueError("SVGMobject requires a content string.")
+
         super().__init__(color=None, stroke_color=None, fill_color=None, **kwargs)
 
         # process keyword arguments
-        self.file_name = Path(file_name) if file_name is not None else None
+        self.content = content
 
         self.should_center = should_center
         self.svg_height = height
@@ -183,31 +184,21 @@ class SVGMobject(VMobject, metaclass=ConvertToOpenGL):
             self.__class__.__name__,
             self.svg_default,
             self.path_string_config,
-            self.file_name,
+            self.content,
             config.renderer,
         )
 
     def generate_mobject(self) -> None:
         """Parse the SVG and translate its elements to submobjects."""
-        file_path = self.get_file_path()
-        element_tree = ET.parse(file_path)
+        element_tree = ET.parse(StringIO(self.content))
         new_tree = self.modify_xml_tree(element_tree)
-        # Create a temporary svg file to dump modified svg to be parsed
-        modified_file_path = file_path.with_name(f"{file_path.stem}_{file_path.suffix}")
-        new_tree.write(modified_file_path)
+        new_tree_content = ET.tostring(new_tree.getroot(), encoding="unicode")
 
-        svg = se.SVG.parse(modified_file_path)
-        modified_file_path.unlink()
+        svg  = se.SVG.parse(StringIO(new_tree_content))
 
         mobjects = self.get_mobjects_from(svg)
         self.add(*mobjects)
         self.flip(RIGHT)  # Flip y
-
-    def get_file_path(self) -> Path:
-        """Search for an existing file based on the specified file name."""
-        if self.file_name is None:
-            raise ValueError("Must specify file for SVGMobject")
-        return get_full_vector_image_path(self.file_name)
 
     def modify_xml_tree(self, element_tree: ET.ElementTree) -> ET.ElementTree:
         """Modifies the SVG element tree to include default
@@ -234,6 +225,7 @@ class SVGMobject(VMobject, metaclass=ConvertToOpenGL):
         config_style_node = ET.SubElement(new_root, "g", config_style_dict)
         root_style_node = ET.SubElement(config_style_node, "g", root_style_dict)
         root_style_node.extend(root)
+                    
         return ET.ElementTree(new_root)
 
     def generate_config_style_dict(self) -> dict[str, str]:

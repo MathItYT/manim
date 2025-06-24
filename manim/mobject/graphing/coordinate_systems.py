@@ -29,6 +29,7 @@ from manim.mobject.graphing.number_line import NumberLine
 from manim.mobject.graphing.scale import LinearBase
 from manim.mobject.mobject import Mobject
 from manim.mobject.opengl.opengl_compatibility import ConvertToOpenGL
+from manim.mobject.text.tex_mobject import MathTex
 from manim.mobject.three_d.three_dimensions import Surface
 from manim.mobject.types.vectorized_mobject import (
     VDict,
@@ -771,11 +772,8 @@ class CoordinateSystem:
                             )
                             color_list.append(mob_color)
                             break
-            if config.renderer == RendererType.OPENGL:
-                graph.set_color(color_list)
-            else:
-                graph.set_stroke(color_list)
-                graph.set_sheen_direction(RIGHT)
+            graph.set_stroke(color_list)
+            graph.set_sheen_direction(RIGHT)
 
         return graph
 
@@ -978,7 +976,7 @@ class CoordinateSystem:
                         )
                     self.add(axes, trig_plane)
         """
-        if config.renderer == RendererType.CANVAS:
+        if config.renderer == RendererType.CAIRO:
             surface = Surface(
                 lambda u, v: self.c2p(u, v, function(u, v)),
                 u_range=u_range,
@@ -2461,7 +2459,7 @@ class ThreeDAxes(Axes):
         self.add(z_axis)
         self.z_axis = z_axis
 
-        if config.renderer == RendererType.CANVAS:
+        if config.renderer == RendererType.CAIRO:
             self._add_3d_pieces()
             self._set_axis_shading()
 
@@ -3181,7 +3179,87 @@ class PolarPlane(Axes):
         VDict
             Labels for the radius and azimuth values.
         """
-        return VGroup()
+        if r_values is None:
+            r_values = [r for r in self.get_x_axis().get_tick_range() if r >= 0]
+        if a_values is None:
+            a_values = np.arange(0, 1, 1 / self.azimuth_step)
+        r_mobs = self.get_x_axis().add_numbers(r_values)
+        if self.azimuth_direction == "CCW":
+            d = 1
+        elif self.azimuth_direction == "CW":
+            d = -1
+        else:
+            raise ValueError("Invalid azimuth direction. Expected one of: CW, CCW")
+        a_points = [
+            {
+                "label": i,
+                "point": np.array(
+                    [
+                        self.get_right()[0]
+                        * np.cos(d * (i * TAU) + self.azimuth_offset),
+                        self.get_right()[0]
+                        * np.sin(d * (i * TAU) + self.azimuth_offset),
+                        0,
+                    ],
+                ),
+            }
+            for i in a_values
+        ]
+        if self.azimuth_units == "PI radians" or self.azimuth_units == "TAU radians":
+            a_tex = [
+                self.get_radian_label(
+                    i["label"],
+                    font_size=self.azimuth_label_font_size,
+                ).next_to(
+                    i["point"],
+                    direction=i["point"],
+                    aligned_edge=i["point"],
+                    buff=self.azimuth_label_buff,
+                )
+                for i in a_points
+            ]
+        elif self.azimuth_units == "degrees":
+            a_tex = [
+                MathTex(
+                    f"{360 * i['label']:g}" + r"^{\circ}",
+                    font_size=self.azimuth_label_font_size,
+                ).next_to(
+                    i["point"],
+                    direction=i["point"],
+                    aligned_edge=i["point"],
+                    buff=self.azimuth_label_buff,
+                )
+                for i in a_points
+            ]
+        elif self.azimuth_units == "gradians":
+            a_tex = [
+                MathTex(
+                    f"{400 * i['label']:g}" + r"^{g}",
+                    font_size=self.azimuth_label_font_size,
+                ).next_to(
+                    i["point"],
+                    direction=i["point"],
+                    aligned_edge=i["point"],
+                    buff=self.azimuth_label_buff,
+                )
+                for i in a_points
+            ]
+        elif self.azimuth_units is None:
+            a_tex = [
+                MathTex(
+                    f"{i['label']:g}",
+                    font_size=self.azimuth_label_font_size,
+                ).next_to(
+                    i["point"],
+                    direction=i["point"],
+                    aligned_edge=i["point"],
+                    buff=self.azimuth_label_buff,
+                )
+                for i in a_points
+            ]
+        a_mobs = VGroup(*a_tex)
+        self.coordinate_labels = VGroup(r_mobs, a_mobs)
+        return self.coordinate_labels
 
     def add_coordinates(
         self,
@@ -3200,8 +3278,47 @@ class PolarPlane(Axes):
         self.add(self.get_coordinate_labels(r_values, a_values))
         return self
 
-    def get_radian_label(self, number, font_size: float = 24, **kwargs: Any) -> VGroup:
-        return VGroup()
+    def get_radian_label(self, number, font_size: float = 24, **kwargs: Any) -> MathTex:
+        constant_label = {"PI radians": r"\pi", "TAU radians": r"\tau"}[
+            self.azimuth_units
+        ]
+        division = number * {"PI radians": 2, "TAU radians": 1}[self.azimuth_units]
+        frac = fr.Fraction(division).limit_denominator(max_denominator=100)
+        if frac.numerator == 0 & frac.denominator == 0:
+            string = r"0"
+        elif frac.numerator == 1 and frac.denominator == 1:
+            string = constant_label
+        elif frac.numerator == 1:
+            if self.azimuth_compact_fraction:
+                string = (
+                    r"\tfrac{" + constant_label + r"}{" + str(frac.denominator) + "}"
+                )
+            else:
+                string = r"\tfrac{1}{" + str(frac.denominator) + "}" + constant_label
+        elif frac.denominator == 1:
+            string = str(frac.numerator) + constant_label
+
+        else:
+            if self.azimuth_compact_fraction:
+                string = (
+                    r"\tfrac{"
+                    + str(frac.numerator)
+                    + constant_label
+                    + r"}{"
+                    + str(frac.denominator)
+                    + r"}"
+                )
+            else:
+                string = (
+                    r"\tfrac{"
+                    + str(frac.numerator)
+                    + r"}{"
+                    + str(frac.denominator)
+                    + r"}"
+                    + constant_label
+                )
+
+        return MathTex(string, font_size=font_size, **kwargs)
 
 
 class ComplexPlane(NumberPlane):

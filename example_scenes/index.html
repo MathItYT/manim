@@ -5,6 +5,19 @@
   <body>
     <div id="container"></div>
     <script type="text/javascript">
+      window.MathJax = {
+        loader: {
+          load: ['output/svg', 'ui/menu']
+        },
+        tex: {
+          packages: ['base', 'require']
+        }
+      };
+    </script>
+    <script type="text/javascript" id="MathJax-script" defer
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+  </script>
+    <script type="text/javascript">
       async function main(){
         let pyodide = await loadPyodide();
         await pyodide.loadPackage("micropip");
@@ -27,11 +40,15 @@ class ExampleScene(Scene):
         circ = Circle(radius=1)
         sq = Square(color=BLUE, side_length=2)
         await self.play(Transform(sq, circ))
-        self.sq = sq
         plane = NumberPlane(faded_line_ratio=4)
+        plane.add_coordinates()
         self.add(plane, sq)
         await self.play(Create(plane))
+        eq = MathTex(r"x^2 + y^2 = 1")
+        eq.to_edge(UP)
+        await self.play(Write(eq))
         await self.render_frame()
+        self.sq = sq
     
     async def on_mouse_click(self, event):
         if not hasattr(self, 'sq'):

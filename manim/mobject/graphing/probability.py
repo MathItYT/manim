@@ -14,6 +14,8 @@ from manim.constants import *
 from manim.mobject.geometry.polygram import Rectangle
 from manim.mobject.graphing.coordinate_systems import Axes
 from manim.mobject.mobject import Mobject
+from manim.mobject.svg.brace import Brace
+from manim.mobject.text.tex_mobject import MathTex
 from manim.mobject.types.vectorized_mobject import VGroup, VMobject
 from manim.utils.color import (
     BLUE_E,
@@ -71,7 +73,12 @@ class SampleSpace(Rectangle):
 
     def add_title(self, title="Sample space", buff=MED_SMALL_BUFF):
         # TODO, should this really exist in SampleSpaceScene
-        pass
+        title_mob = MathTex(f"\\text{{{title}}}")
+        if title_mob.width > self.width:
+            title_mob.width = self.width
+        title_mob.next_to(self, UP, buff=buff)
+        self.title = title_mob
+        self.add(title_mob)
 
     def add_label(self, label):
         self.label = label
@@ -121,7 +128,27 @@ class SampleSpace(Rectangle):
         buff=SMALL_BUFF,
         min_num_quads=1,
     ):
-        return VGroup()
+        label_mobs = VGroup()
+        braces = VGroup()
+        for label, part in zip(labels, parts):
+            brace = Brace(part, direction, min_num_quads=min_num_quads, buff=buff)
+            if isinstance(label, Mobject):
+                label_mob = label
+            else:
+                label_mob = MathTex(label)
+                label_mob.scale(self.default_label_scale_val)
+            label_mob.next_to(brace, direction, buff)
+
+            braces.add(brace)
+            label_mobs.add(label_mob)
+        parts.braces = braces
+        parts.labels = label_mobs
+        parts.label_kwargs = {
+            "labels": label_mobs.copy(),
+            "direction": direction,
+            "buff": buff,
+        }
+        return VGroup(parts.braces, parts.labels)
 
     def get_side_braces_and_labels(self, labels, direction=LEFT, **kwargs):
         assert hasattr(self, "horizontal_parts")
@@ -257,7 +284,7 @@ class BarChart(Axes):
         if x_length is None:
             x_length = min(len(self.values), config.frame_width - 2)
 
-        x_axis_config = {"font_size": 24, "label_constructor": lambda x: VMobject()}
+        x_axis_config = {"font_size": 24, "label_constructor": lambda *args, **kwargs: MathTex("\\text{", *args, "}", **kwargs)}
         self._update_default_configs(
             (x_axis_config,), (kwargs.pop("x_axis_config", None),)
         )
@@ -370,7 +397,7 @@ class BarChart(Axes):
         color: ParsableManimColor | None = None,
         font_size: float = 24,
         buff: float = MED_SMALL_BUFF,
-        label_constructor: type[VMobject] = lambda x: VMobject(),
+        label_constructor: type[VMobject] = lambda *args, **kwargs: MathTex("\\text{", *args, "}", **kwargs)
     ):
         """Annotates each bar with its corresponding value. Use ``self.bar_labels`` to access the
         labels after creation.

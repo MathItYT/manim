@@ -20,6 +20,8 @@ from manim import config
 from manim.constants import *
 from manim.mobject.geometry.line import Line
 from manim.mobject.graphing.scale import LinearBase, _ScaleBase
+from manim.mobject.text.numbers import DecimalNumber
+from manim.mobject.text.tex_mobject import MathTex
 from manim.mobject.types.vectorized_mobject import VGroup, VMobject
 from manim.utils.bezier import interpolate
 from manim.utils.config_ops import merge_dicts_recursively
@@ -155,7 +157,7 @@ class NumberLine(Line):
         include_numbers: bool = False,
         font_size: float = 36,
         label_direction: Sequence[float] = DOWN,
-        label_constructor: VMobject | None = None,
+        label_constructor: VMobject = MathTex,
         scaling: _ScaleBase = LinearBase(),
         line_to_number_buff: float = MED_SMALL_BUFF,
         decimal_number_config: dict | None = None,
@@ -459,7 +461,28 @@ class NumberLine(Line):
         :class:`~.DecimalNumber`
             The positioned mobject.
         """
-        return VMobject()
+        number_config = merge_dicts_recursively(
+            self.decimal_number_config,
+            number_config,
+        )
+        if direction is None:
+            direction = self.label_direction
+        if buff is None:
+            buff = self.line_to_number_buff
+        if font_size is None:
+            font_size = self.font_size
+        if label_constructor is None:
+            label_constructor = self.label_constructor
+
+        num_mob = DecimalNumber(
+            x, font_size=font_size, mob_class=label_constructor, **number_config
+        )
+
+        num_mob.next_to(self.number_to_point(x), direction=direction, buff=buff)
+        if x < 0 and self.label_direction[0] == 0:
+            # Align without the minus sign
+            num_mob.shift(num_mob[0].width * LEFT / 2)
+        return num_mob
 
     def get_number_mobjects(self, *numbers, **kwargs) -> VGroup:
         if len(numbers) == 0:
@@ -557,7 +580,32 @@ class NumberLine(Line):
         AttributeError
             If the label does not have a ``font_size`` attribute, an ``AttributeError`` is raised.
         """
-        pass
+        direction = self.label_direction if direction is None else direction
+        buff = self.line_to_number_buff if buff is None else buff
+        font_size = self.font_size if font_size is None else font_size
+        if label_constructor is None:
+            label_constructor = self.label_constructor
+
+        labels = VGroup()
+        for x, label in dict_values.items():
+            # TODO: remove this check and ability to call
+            # this method via CoordinateSystem.add_coordinates()
+            # must be explicitly called
+            if isinstance(label, str) and label_constructor is MathTex:
+                label = MathTex(f"\\text{{{label}}}", font_size=font_size)
+            else:
+                label = self._create_label_tex(label, label_constructor)
+
+            if hasattr(label, "font_size"):
+                label.font_size = font_size
+            else:
+                raise AttributeError(f"{label} is not compatible with add_labels.")
+            label.next_to(self.number_to_point(x), direction=direction, buff=buff)
+            labels.add(label)
+
+        self.labels = labels
+        self.add(labels)
+        return self
 
     def _create_label_tex(
         self,
@@ -584,7 +632,12 @@ class NumberLine(Line):
         :class:`~.VMobject`
             The label.
         """
-        return VMobject()
+        if label_constructor is None:
+            label_constructor = self.label_constructor
+        if isinstance(label_tex, VMobject):
+            return label_tex
+        else:
+            return label_constructor(label_tex, **kwargs)
 
     @staticmethod
     def _decimal_places_from_step(step) -> int:

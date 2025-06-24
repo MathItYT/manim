@@ -42,7 +42,10 @@ from .mobject.graphing.probability import *
 from .mobject.graphing.scale import *
 from .mobject.logo import *
 from .mobject.mobject import *
+from .mobject.svg.brace import *
 from .mobject.svg.svg_mobject import *
+from .mobject.text.numbers import *
+from .mobject.text.tex_mobject import *
 from .mobject.three_d.three_d_utils import *
 from .mobject.three_d.three_dimensions import *
 from .mobject.types.image_mobject import *
