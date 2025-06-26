@@ -1,6 +1,6 @@
 [project]
 name = "manim-web"
-version = "0.1.4"
+version = "0.1.5"
 description = "Animation engine for explanatory math videos, for the web."
 authors = [
   {name = "Benjamín Ubilla", email = "benjamin.ubilla@uc.cl"},
