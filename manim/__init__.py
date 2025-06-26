@@ -31,6 +31,7 @@ from .camera.three_d_camera import *
 from .constants import *
 from .mobject.frame import *
 from .mobject.geometry.arc import *
+from .mobject.geometry.boolean_ops import *
 from .mobject.geometry.line import *
 from .mobject.geometry.polygram import *
 from .mobject.geometry.shape_matchers import *

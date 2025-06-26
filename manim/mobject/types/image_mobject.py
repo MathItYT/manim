@@ -230,7 +230,7 @@ class ImageMobject(AbstractImageMobject):
             The alpha value of the object, 1 being opaque and 0 being
             transparent.
         """
-        self.pixel_array[:, :, 3] = int(255 * alpha)
+        self.pixel_array[:, :, 3] *= alpha
         self.fill_opacity = alpha
         self.stroke_opacity = alpha
         return self
