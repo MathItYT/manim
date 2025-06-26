@@ -40,6 +40,8 @@ from .mobject.graphing.functions import *
 from .mobject.graphing.number_line import *
 from .mobject.graphing.probability import *
 from .mobject.graphing.scale import *
+from .mobject.graph import *
+from .mobject.table import *
 from .mobject.logo import *
 from .mobject.mobject import *
 from .mobject.svg.brace import *
