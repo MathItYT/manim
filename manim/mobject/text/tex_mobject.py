@@ -31,10 +31,8 @@ from js import window
 
 from manim import config, logger
 from manim.constants import *
-from manim.mobject.geometry.line import Line
 from manim.mobject.svg.svg_mobject import SVGMobject
 from manim.mobject.types.vectorized_mobject import VGroup, VMobject
-from manim.utils.tex import TexTemplate
 
 tex_string_to_mob_map = {}
 

@@ -2,21 +2,15 @@ from __future__ import annotations
 
 __all__ = ["Camera"]
 
-import copy
-import itertools as it
-import operator as op
 import numpy as np
 from PIL import Image
-from scipy.spatial.distance import pdist
 from collections.abc import Iterable
-from functools import reduce
-from typing import Any, Callable
-import base64
-from io import BytesIO
+from typing import Any
 
-from js import document, Uint8ClampedArray, Image as JSImage
+from js import Uint8ClampedArray, ImageData, Uint8ClampedArray, Object, CustomEvent
+from pyodide.ffi import to_js
 
-from .. import config, logger
+from .. import config
 from ..constants import *
 from ..mobject.mobject import Mobject
 from ..mobject.types.image_mobject import AbstractImageMobject
@@ -25,7 +19,78 @@ from ..utils.color import ManimColor, ParsableManimColor, color_to_int_rgba
 from ..utils.family import extract_mobject_family_members
 from ..utils.images import get_full_raster_image_path
 from ..utils.iterables import list_difference_update
-from ..utils.space_ops import angle_of_vector
+
+
+class VMobjectData:
+    def __init__(
+        self,
+        vmobject: VMobject,
+        camera: Camera,
+    ) -> None:
+        self.vmobject = vmobject
+        self.camera = camera
+        self.points = self.camera.transform_points_pre_display(vmobject, vmobject.points)
+        self.points = [[[p[:2].tolist() for p in tuple] for tuple in self.vmobject.gen_cubic_bezier_tuples_from_points(subpath)] for subpath in self.vmobject.gen_subpaths_from_points_2d(self.points)]
+        self.transform = self.camera.get_canvas_transform()
+        self.stroke_rgbas = self.camera.get_stroke_rgbas(vmobject).tolist()
+        self.background_stroke_rgbas = self.camera.get_stroke_rgbas(vmobject, background=True).tolist()
+        self.fill_rgbas = self.camera.get_fill_rgbas(vmobject).tolist()
+        self.gradient_start_and_end_points = vmobject.get_gradient_start_and_end_points()
+        self.gradient_start_and_end_points = np.array(self.camera.transform_points_pre_display(
+            vmobject,
+            self.gradient_start_and_end_points,
+        )).tolist()
+        self.stroke_width = vmobject.get_stroke_width()
+        self.background_stroke_width = vmobject.get_stroke_width(background=True)
+    
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": "VMobjectData",
+            "points": self.points,
+            "transform": self.transform,
+            "stroke_rgbas": self.stroke_rgbas,
+            "background_stroke_rgbas": self.background_stroke_rgbas,
+            "fill_rgbas": self.fill_rgbas,
+            "gradient_start_and_end_points": self.gradient_start_and_end_points,
+            "stroke_width": self.stroke_width,
+            "background_stroke_width": self.background_stroke_width,
+        }
+
+
+class AbstractImageData:
+    def __init__(
+        self,
+        image_mobject: AbstractImageMobject,
+        camera: Camera,
+    ) -> None:
+        self.image_mobject = image_mobject
+        self.camera = camera
+        pixel_array = image_mobject.get_pixel_array()
+        p0, p1, p2, p3 = self.camera.points_to_pixel_coords(
+            image_mobject,
+            image_mobject.points,
+        )
+        dx1 = p1[0] - p0[0]
+        dy1 = p1[1] - p0[1]
+        dx2 = p2[0] - p0[0]
+        dy2 = p2[1] - p0[1]
+        w = pixel_array.shape[1]
+        h = pixel_array.shape[0]
+        a = dx1 / w
+        b = dy1 / w
+        c = dx2 / h
+        d = dy2 / h
+        e = p0[0]
+        f = p0[1]
+        self.transform = [a, b, c, d, e, f]
+        self.image_data = camera.get_image_data(np.array(pixel_array, dtype=camera.pixel_array_dtype))
+    
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": "AbstractImageData",
+            "transform": self.transform,
+            "image_data": self.image_data,
+        }
 
 
 class Camera:
@@ -47,6 +112,8 @@ class Camera:
         background_opacity: float | None = None,
         **kwargs,
     ):
+        self.element = None
+        self.event_name = None
         self.cached_b64 = {}
         self.background_image = background_image
         self.frame_center = frame_center
@@ -88,13 +155,12 @@ class Camera:
         self.max_allowable_norm = config["frame_width"]
         self.rgb_max_val = np.iinfo(self.pixel_array_dtype).max
 
-        self.canvas = document.createElement("canvas")
-        self.canvas.width = self.pixel_width
-        self.canvas.height = self.pixel_height
-        self.ctx = self.canvas.getContext("2d")
-
         self.init_background()
         self.resize_frame_shape()
+    
+    def init_element(self, element, event_name):
+        self.element = element
+        self.event_name = event_name
     
     @property
     def background_color(self) -> ManimColor:
@@ -132,28 +198,8 @@ class Camera:
         self._background_opacity = value
         self.init_background()
     
-    def img_to_base64(self, image: Image.Image) -> str:
-        """Convierte una imagen PIL a una cadena base64.
-
-        Parameters
-        ----------
-        image : Image.Image
-            Imagen PIL a convertir.
-
-        Returns
-        -------
-        str
-            Cadena base64 de la imagen.
-        """
-        buffered = BytesIO()
-        image.save(buffered, format="PNG")
-        buffered.seek(0)
-        data = buffered.read()
-        b64_data = base64.b64encode(data).decode("utf-8")
-        return f"data:image/png;base64,{b64_data}"
-    
-    async def get_image(self, base64_string: str):
-        """Convierte un arreglo de píxeles (np.ndarray) a un objeto Image del canvas.
+    def get_image_data(self, arr: np.ndarray):
+        """Convierte un arreglo de píxeles (np.ndarray) a un objeto ImageData del canvas.
 
         Parameters
         ----------
@@ -163,15 +209,11 @@ class Camera:
         Returns
         -------
         ImageData
-            Objeto ImageData listo para usarse en ctx.drawImage.
+            Objeto ImageData listo para usarse en ctx.putImageData().
         """
-        if base64_string in self.cached_b64:
-            return self.cached_b64[base64_string]
-        js_image = JSImage.new()
-        js_image.src = base64_string
-        await js_image.decode()
-        self.cached_b64[base64_string] = js_image
-        return js_image
+        js_buf = Uint8ClampedArray.new(arr.tobytes())
+        img = ImageData.new(js_buf, arr.shape[1], arr.shape[0])
+        return img
 
     def init_background(self):
         height = self.pixel_height
@@ -192,26 +234,6 @@ class Camera:
             )
             self.background[:, :] = background_rgba
 
-    async def reset_pixel_array(self, new_height: float, new_width: float):
-        self.pixel_width = new_width
-        self.pixel_height = new_height
-        self.init_background()
-        self.resize_frame_shape()
-        await self.reset()
-    
-    @property
-    def pixel_array(self) -> np.ndarray:
-        """Arreglo de píxeles del canvas."""
-        data = self.ctx.getImageData(
-            0,
-            0,
-            self.canvas.width,
-            self.canvas.height,
-        ).data
-        return np.array(data, dtype=self.pixel_array_dtype).reshape(
-            (self.pixel_height, self.pixel_width, self.n_channels)
-        )
-
     def resize_frame_shape(self, fixed_dimension: int = 0):
         pixel_height = self.pixel_height
         pixel_width = self.pixel_width
@@ -225,45 +247,29 @@ class Camera:
         self.frame_height = frame_height
         self.frame_width = frame_width
 
-    async def reset(self):
-        await self.set_pixel_array(self.background)
-        return self
+    def capture_mobject(self, mobject: Mobject, **kwargs: Any):
+        return self.capture_mobjects([mobject], **kwargs)
 
-    async def set_frame_to_background(self, background):
-        """Establece el arreglo de píxeles actual al fondo proporcionado."""
-        await self.set_pixel_array(background)
-
-    async def set_pixel_array(self, pixel_array: np.ndarray | list | tuple):
-        img = Image.fromarray(
-            np.array(pixel_array, dtype=self.pixel_array_dtype),
-            mode=self.image_mode,
-        )
-        b64_string = self.img_to_base64(img)
-        js_image = await self.get_image(b64_string)
-        self.undo_canvas_transform()
-        self.ctx.clearRect(0, 0, self.canvas.width, self.canvas.height)
-        self.ctx.drawImage(js_image, 0, 0, self.canvas.width, self.canvas.height)
-
-    async def capture_mobject(self, mobject: Mobject, **kwargs: Any):
-        return await self.capture_mobjects([mobject], **kwargs)
-
-    async def capture_mobjects(self, mobjects: Iterable[Mobject], **kwargs):
+    def capture_mobjects(self, mobjects: Iterable[Mobject], **kwargs):
+        if self.element is None or self.event_name is None:
+            return
         mobjects = self.get_mobjects_to_display(mobjects, **kwargs)
-        for group_type, group in it.groupby(mobjects, self.type_or_raise):
-            await self.display_funcs[group_type](list(group))
-
-    def type_or_raise(self, mobject: Mobject):
-        async def fallback(group):
-            pass
-        self.display_funcs = {
-            VMobject: self.display_multiple_non_background_colored_vmobjects,
-            AbstractImageMobject: self.display_multiple_image_mobjects,
-            Mobject: fallback
-        }
-        for _type in self.display_funcs:
-            if isinstance(mobject, _type):
-                return _type
-        raise TypeError(f"Displaying an object of class {type(mobject)} is not supported")
+        data = [Object.fromEntries(to_js({
+            "type": "BackgroundData",
+            "background_color": self.background_color.to_rgba().tolist(),
+            "background_opacity": self.background_opacity,
+        }))]
+        for mobject in mobjects:
+            if isinstance(mobject, VMobject):
+                data.append(Object.fromEntries(to_js(VMobjectData(mobject, self).to_dict())))
+            elif isinstance(mobject, AbstractImageMobject):
+                data.append(Object.fromEntries(to_js(AbstractImageData(mobject, self).to_dict())))
+            else:
+                pass
+        event = CustomEvent.new(self.event_name, Object.fromEntries(to_js({
+            "detail": data,
+        })))
+        self.element.dispatchEvent(event)
 
     def get_mobjects_to_display(self, mobjects: Iterable[Mobject], include_submobjects: bool = True, excluded_mobjects: list | None = None):
         if include_submobjects:
@@ -279,62 +285,14 @@ class Camera:
                 )
                 mobjects = list_difference_update(mobjects, all_excluded)
         return list(mobjects)
-
-    async def display_multiple_non_background_colored_vmobjects(self, vmobjects: list):
-        ctx = self.ctx
-        self.apply_canvas_transform()
-
-        for vmobject in vmobjects:
-            self.set_canvas_path(ctx, vmobject)
-            self.apply_stroke(ctx, vmobject, background=True)
-            self.apply_fill(ctx, vmobject)
-            self.apply_stroke(ctx, vmobject)
-
-    def set_canvas_path(self, ctx, vmobject: VMobject):
-        points = self.transform_points_pre_display(vmobject, vmobject.points)
-        if len(points) == 0:
-            return
-
-        ctx.beginPath()
-        subpaths = vmobject.gen_subpaths_from_points_2d(points)
-        for subpath in subpaths:
-            if len(subpath) == 0:
-                continue
-            start = subpath[0]
-            ctx.moveTo(*start[:2])
-            quads = vmobject.gen_cubic_bezier_tuples_from_points(subpath)
-            for _, p1, p2, p3 in quads:
-                ctx.bezierCurveTo(*p1[:2], *p2[:2], *p3[:2])
-            if vmobject.consider_points_equals_2d(subpath[0], subpath[-1]):
-                ctx.closePath()
     
-    def set_canvas_fill_gradient(self, ctx, vmobject: VMobject, r: int, g: int, b: int, a: float):
-        """Configura un gradiente de relleno en el contexto del canvas basado en los puntos del VMobject."""
-        rgbas = self.get_fill_rgbas(vmobject)
-        if len(rgbas) == 1:
-            ctx.fillStyle = f"rgba({r}, {g}, {b}, {a})"
-            return
-
-        points = vmobject.get_gradient_start_and_end_points()
-        points = self.transform_points_pre_display(vmobject, points)
-        x0, y0 = points[0][:2]
-        x1, y1 = points[1][:2]
-        gradient = ctx.createLinearGradient(x0, y0, x1, y1)
-
-        step = 1.0 / (len(rgbas) - 1)
-        for i, rgba in enumerate(rgbas):
-            r, g, b, a = [int(c * 255) if j < 3 else c for j, c in enumerate(rgba)]
-            gradient.addColorStop(i * step, f"rgba({r}, {g}, {b}, {a})")
-
-        ctx.fillStyle = gradient
-
-    def apply_fill(self, ctx, vmobject: VMobject):
-        rgba = vmobject.get_fill_rgbas()[0]
-        r, g, b, a = [int(c * 255) if i < 3 else c for i, c in enumerate(rgba)]
-        self.set_canvas_fill_gradient(ctx, vmobject, r, g, b, a)
-        ctx.fill()
+    def get_stroke_rgbas(self, mobject: VMobject, background: bool = False):
+        return mobject.get_stroke_rgbas(background)
     
-    def apply_canvas_transform(self):
+    def get_fill_rgbas(self, mobject: VMobject):
+        return mobject.get_fill_rgbas()
+    
+    def get_canvas_transform(self):
         """Configura la matriz de transformación en el contexto de canvas para igualar la transformación que hacía Cairo."""
         pw = self.pixel_width
         ph = self.pixel_height
@@ -347,85 +305,7 @@ class Camera:
         translate_x = pw / 2 - fc[0] * scale_x
         translate_y = ph / 2 - fc[1] * scale_y
 
-        self.ctx.setTransform(scale_x, 0, 0, scale_y, translate_x, translate_y)
-
-    def get_fill_rgbas(self, vmobject: VMobject):
-        return vmobject.get_fill_rgbas()
-    
-    def get_stroke_rgbas(self, vmobject: VMobject, background: bool = False):
-        return vmobject.get_stroke_rgbas(background=background)
-    
-    def undo_canvas_transform(self):
-        """Reestablece la matriz de transformación del contexto de canvas a la identidad."""
-        self.ctx.setTransform(1, 0, 0, 1, 0, 0)
-    
-    def set_canvas_stroke_gradient(self, ctx, vmobject: VMobject, background: bool = False):
-        """Configura un gradiente lineal de trazo en el contexto del canvas basado en los puntos del VMobject."""
-        rgbas = self.get_stroke_rgbas(vmobject, background=background)
-        if len(rgbas) == 1:
-            r, g, b, a = [int(c * 255) if i < 3 else c for i, c in enumerate(rgbas[0])]
-            ctx.strokeStyle = f"rgba({r}, {g}, {b}, {a})"
-            return
-
-        points = vmobject.get_gradient_start_and_end_points()
-        points = self.transform_points_pre_display(vmobject, points)
-        x0, y0 = points[0][:2]
-        x1, y1 = points[1][:2]
-        gradient = ctx.createLinearGradient(x0, y0, x1, y1)
-
-        step = 1.0 / (len(rgbas) - 1)
-        for i, rgba in enumerate(rgbas):
-            r, g, b, a = [int(c * 255) if j < 3 else c for j, c in enumerate(rgba)]
-            gradient.addColorStop(i * step, f"rgba({r}, {g}, {b}, {a})")
-
-        ctx.strokeStyle = gradient
-
-    def apply_stroke(self, ctx, vmobject: VMobject, background=False):
-        width = vmobject.get_stroke_width(background)
-        if width == 0:
-            return
-        self.set_canvas_stroke_gradient(ctx, vmobject, background=background)
-        ctx.lineWidth = width / 100
-        ctx.stroke()
-
-    async def display_multiple_image_mobjects(self, image_mobjects: list):
-        for image_mobject in image_mobjects:
-            await self.display_image_mobject(image_mobject)
-
-    async def display_image_mobject(self, image_mobject: AbstractImageMobject):
-        self.undo_canvas_transform()
-        corner_coords = self.points_to_pixel_coords(image_mobject, image_mobject.points)
-        ul_coords, ur_coords, dl_coords, _ = corner_coords
-        right_vect = ur_coords - ul_coords
-        down_vect = dl_coords - ul_coords
-        center_coords = ul_coords + (right_vect + down_vect) / 2
-
-        sub_image = Image.fromarray(image_mobject.get_pixel_array(), mode="RGBA")
-        pixel_width = max(int(pdist([ul_coords, ur_coords]).item()), 1)
-        pixel_height = max(int(pdist([ul_coords, dl_coords]).item()), 1)
-        sub_image = sub_image.resize((pixel_width, pixel_height), resample=image_mobject.resampling_algorithm)
-
-        angle = angle_of_vector(right_vect)
-        adjusted_angle = -int(360 * angle / TAU)
-        if adjusted_angle != 0:
-            sub_image = sub_image.rotate(adjusted_angle, resample=image_mobject.resampling_algorithm, expand=1)
-
-        full_image = Image.fromarray(np.zeros((self.pixel_height, self.pixel_width)), mode="RGBA")
-        new_ul_coords = center_coords - np.array(sub_image.size) / 2
-        new_ul_coords = new_ul_coords.astype(int)
-        full_image.paste(sub_image, box=(
-            new_ul_coords[0],
-            new_ul_coords[1],
-            new_ul_coords[0] + sub_image.size[0],
-            new_ul_coords[1] + sub_image.size[1],
-        ))
-        b64_string = self.img_to_base64(full_image)
-        js_image = await self.get_image(b64_string)
-        self.ctx.drawImage(
-            js_image,
-            0, 0,
-            self.pixel_width, self.pixel_height,
-        )
+        return [scale_x, 0, 0, scale_y, translate_x, translate_y]
 
     def overlay_PIL_image(self, pixel_array: np.ndarray, image: Image):
         pixel_array[:, :] = np.array(

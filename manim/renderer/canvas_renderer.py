@@ -9,10 +9,7 @@ from manim.utils.hashing import get_hash_from_play_call
 from .. import config, logger
 from ..camera.camera import Camera
 from ..mobject.mobject import Mobject, _AnimationBuilder
-from ..utils.exceptions import EndSceneEarlyException
 from ..utils.iterables import list_update
-
-from js import document
 
 if typing.TYPE_CHECKING:
     from typing import Any
@@ -103,7 +100,7 @@ class CanvasRenderer:
         self.save_static_frame_data(scene, scene.static_mobjects)
 
         if scene.is_current_animation_frozen_frame():
-            await self.update_frame(scene, mobjects=scene.moving_mobjects)
+            self.update_frame(scene, mobjects=scene.moving_mobjects)
             # self.duration stands for the total run time of all the animations.
             # In this case, as there is only a wait, it will be the length of the wait.
             self.freeze_current_frame(scene.duration)
@@ -120,7 +117,7 @@ class CanvasRenderer:
     def static_image(self, value: PixelArray | None):
         pass
 
-    async def update_frame(  # TODO Description in Docstring
+    def update_frame(  # TODO Description in Docstring
         self,
         scene,
         mobjects: typing.Iterable[Mobject] | None = None,
@@ -151,13 +148,12 @@ class CanvasRenderer:
                 scene.mobjects,
                 scene.foreground_mobjects,
             )
-        await self.camera.reset()
 
         kwargs["include_submobjects"] = include_submobjects
-        await self.camera.capture_mobjects(mobjects, **kwargs)
+        self.camera.capture_mobjects(mobjects, **kwargs)
 
-    async def render(self, scene, time, moving_mobjects):
-        await self.update_frame(scene, moving_mobjects)
+    def render(self, scene, time, moving_mobjects):
+        self.update_frame(scene, moving_mobjects)
 
     def get_frame(self) -> PixelArray:
         """
@@ -194,12 +190,12 @@ class CanvasRenderer:
         """
         pass
 
-    async def show_frame(self):
+    def show_frame(self):
         """
         Opens the current frame in the Default Image Viewer
         of your system.
         """
-        await self.update_frame(ignore_skipping=True)
+        self.update_frame(ignore_skipping=True)
 
     def save_static_frame_data(
         self,

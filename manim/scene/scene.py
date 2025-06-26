@@ -9,8 +9,8 @@ __all__ = ["Scene"]
 import copy
 import inspect
 import random
+import asyncio
 from pyodide.ffi import create_proxy
-from pyodide.code import run_js
 import types
 from queue import Queue
 
@@ -181,18 +181,39 @@ class Scene:
                 result.mobject_updater_lists.append((mobject_clone, cloned_updaters))
         return result
     
-    @property
-    def canvas(self):
-        """The canvas element of the renderer."""
-        return self.renderer.canvas
+    def init_element(self, element, event_name):
+        self.camera.init_element(element, event_name)
+        self.element.addEventListener(
+            "mousedown",
+            create_proxy(self.on_mouse_down),
+        )
+        self.element.addEventListener(
+            "mouseup",
+            create_proxy(self.on_mouse_up),
+        )
+        self.element.addEventListener(
+            "mousemove",
+            create_proxy(self.on_mouse_move),
+        )
+        self.element.addEventListener(
+            "click",
+            create_proxy(self.on_mouse_click),
+        )
+        self.element.addEventListener(
+            "keydown",
+            create_proxy(self.on_key_down),
+        )
+        self.element.addEventListener(
+            "keyup",
+            create_proxy(self.on_key_up),
+        )
+
+    def render_frame(self) -> None:
+        self.renderer.render(self, self.time, self.moving_mobjects)
     
     @property
-    def ctx(self):
-        """The context of the canvas element of the renderer."""
-        return self.renderer.ctx
-    
-    async def render_frame(self) -> None:
-        await self.renderer.render(self, self.time, self.moving_mobjects)
+    def element(self):
+        return self.camera.element
 
     async def render(self, preview: bool = False):
         """
@@ -203,31 +224,6 @@ class Scene:
         preview
             If true, opens scene in a file viewer.
         """
-        self.canvas.addEventListener(
-            "mousedown",
-            create_proxy(self.on_mouse_down),
-        )
-        self.canvas.addEventListener(
-            "mouseup",
-            create_proxy(self.on_mouse_up),
-        )
-        self.canvas.addEventListener(
-            "mousemove",
-            create_proxy(self.on_mouse_move),
-        )
-        self.canvas.addEventListener(
-            "click",
-            create_proxy(self.on_mouse_click),
-        )
-        self.canvas.addEventListener(
-            "keydown",
-            create_proxy(self.on_key_down),
-        )
-        self.canvas.addEventListener(
-            "keyup",
-            create_proxy(self.on_key_up),
-        )
-        await self.camera.reset()
         await self.setup()
         try:
             await self.construct()
@@ -1179,15 +1175,14 @@ class Scene:
             Whether the rendering should be skipped, by default False
         """
         self.duration = self.get_run_time(self.animations)
-        val = int(1000 / self.camera.frame_rate)
         for t in np.arange(0, self.duration, 1 / self.camera.frame_rate):
-            future = run_js(f"new Promise((resolve) => setTimeout(resolve, {val}))")
+            task = asyncio.create_task(asyncio.sleep(1 / self.camera.frame_rate))
             self.update_to_time(t)
             if not skip_rendering and not self.skip_animation_preview:
-                await self.renderer.render(self, t, self.moving_mobjects)
+                self.renderer.render(self, t, self.moving_mobjects)
             if self.stop_condition is not None and self.stop_condition():
                 break
-            await future
+            await task
 
         for animation in self.animations:
             animation.finish()

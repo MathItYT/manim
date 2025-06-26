@@ -1,6 +1,6 @@
 [project]
 name = "manim-web"
-version = "0.1.3"
+version = "0.1.4"
 description = "Animation engine for explanatory math videos, for the web."
 authors = [
   {name = "Benjamín Ubilla", email = "benjamin.ubilla@uc.cl"},
@@ -43,13 +43,11 @@ dependencies = [
 "manimce" = "manim.__main__:main"
 
 [project.urls]
-repository = "https://github.com/manimcommunity/manim"
+repository = "https://github.com/MathItYT/manim"
 documentation = "https://docs.manim.community/"
 homepage = "https://www.manim.community/"
-"Bug Tracker" = "https://github.com/ManimCommunity/manim/issues"
+"Bug Tracker" = "https://github.com/MathItYT/manim/issues"
 "Changelog" = "https://docs.manim.community/en/stable/changelog.html"
-"X / Twitter" = "https://x.com/manim_community"
-"Bluesky" = "https://bsky.app/profile/manim.community"
 "Discord" = "https://www.manim.community/discord/"
 
 [project.optional-dependencies]
