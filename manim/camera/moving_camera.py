@@ -123,10 +123,10 @@ class MovingCamera(Camera):
         """
         self.frame.move_to(frame_center)
 
-    async def capture_mobjects(self, mobjects, **kwargs):
+    def capture_mobjects(self, mobjects, **kwargs):
         # self.reset_frame_center()
         # self.realign_frame_shape()
-        await super().capture_mobjects(mobjects, **kwargs)
+        super().capture_mobjects(mobjects, **kwargs)
 
     # Since the frame can be moving around, the cairo
     # context used for updating should be regenerated

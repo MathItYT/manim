@@ -96,9 +96,9 @@ class ThreeDCamera(Camera):
     def frame_center(self, point):
         self._frame_center.move_to(point)
 
-    async def capture_mobjects(self, mobjects, **kwargs):
+    def capture_mobjects(self, mobjects, **kwargs):
         self.reset_rotation_matrix()
-        await super().capture_mobjects(mobjects, **kwargs)
+        super().capture_mobjects(mobjects, **kwargs)
 
     def get_value_trackers(self):
         """A list of :class:`ValueTrackers <.ValueTracker>` of phi, theta, focal_distance,

@@ -79,14 +79,14 @@ class MultiCamera(MovingCamera):
         super().reset()
         return self
 
-    async def capture_mobjects(self, mobjects, **kwargs):
+    def capture_mobjects(self, mobjects, **kwargs):
         self.update_sub_cameras()
         for imfc in self.image_mobjects_from_cameras:
             to_add = list(mobjects)
             if not self.allow_cameras_to_capture_their_own_display:
                 to_add = list_difference_update(to_add, imfc.get_family())
-            await imfc.camera.capture_mobjects(to_add, **kwargs)
-        await super().capture_mobjects(mobjects, **kwargs)
+            imfc.camera.capture_mobjects(to_add, **kwargs)
+        super().capture_mobjects(mobjects, **kwargs)
 
     def get_mobjects_indicating_movement(self):
         """Returns all mobjects whose movement implies that the camera

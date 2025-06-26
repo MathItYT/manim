@@ -39,7 +39,7 @@ class MappingCamera(Camera):
             np.apply_along_axis(self.mapping_func, 1, points),
         )
 
-    async def capture_mobjects(self, mobjects, **kwargs):
+    def capture_mobjects(self, mobjects, **kwargs):
         mobjects = self.get_mobjects_to_display(mobjects, **kwargs)
         if self.allow_object_intrusion:
             mobject_copies = mobjects
@@ -51,7 +51,7 @@ class MappingCamera(Camera):
                 and 0 < mobject.get_num_curves() < self.min_num_curves
             ):
                 mobject.insert_n_curves(self.min_num_curves)
-        await super().capture_mobjects(
+        super().capture_mobjects(
             mobject_copies,
             include_submobjects=False,
             excluded_mobjects=None,
