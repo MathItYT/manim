@@ -26,7 +26,12 @@
         await pyodide.runPythonAsync(`
 import micropip
 
-micropip.install("manim-web")
+await micropip.install("manim-web-physics")
+`);
+        await pyodide.runPythonAsync(`
+import micropip
+
+await micropip.install("/pymunk-7.0.1-cp312-cp312-pyodide_2024_0_wasm32.whl")
 `);
         const canvas = document.getElementById("canvas");
         const ctx = canvas.getContext("2d");
@@ -104,36 +109,46 @@ micropip.install("manim-web")
         });
         await pyodide.runPythonAsync(`
 from manim import *
+from manim_physics import *
 from js import document
+import asyncio
 
 
 config.background_color = "#222222"
 
 
-class ExampleScene(MovingCameraScene):
+class ExampleScene(MovingCameraScene, SpaceScene):
     async def construct(self):
         self.bbox = self.element.getBoundingClientRect()
         self.dragging = False
         self.starting_position = None
-        title = MathTex(r"\\bf{\\text{Hello, functions!}}", font_size=96)
-        eq = MathTex("y =", "f(", "x", ")", tex_to_color_map={
-            "y": YELLOW,
-            "x": YELLOW,
-        }, font_size=72)
-        VGroup(title, eq).arrange(DOWN, buff=0.1).to_edge(UP)
-        self.add(title, eq)
-        ax = Axes(
-            x_range=[-1, 5, 1],
-            y_range=[-1, 5, 1],
-            x_length=4,
-            y_length=4,
+        circle = Circle().shift(UP)
+        circle.set_fill(RED, 1)
+        circle.shift(DOWN + RIGHT)
+
+        rect = Square().shift(UP)
+        rect.rotate(PI / 4)
+        rect.set_fill(YELLOW_A, 1)
+        rect.shift(UP * 2)
+        rect.scale(0.5)
+
+        ground = Line([-4, -3.5, 0], [4, -3.5, 0])
+        wall1 = Line([-4, -3.5, 0], [-4, 3.5, 0])
+        wall2 = Line([4, -3.5, 0], [4, 3.5, 0])
+        walls = VGroup(ground, wall1, wall2)
+        self.add(walls)
+
+        await self.play(
+            DrawBorderThenFill(circle),
+            DrawBorderThenFill(rect),
         )
-        plot = ax.plot(lambda x: x ** 2 / 5, color=YELLOW)
-        labels = ax.get_axis_labels(x_label="x", y_label="y")
-        labels.set_color(YELLOW)
-        VGroup(ax, plot, labels).shift(DOWN)
-        self.add(ax, plot, labels)
-        self.render_frame()
+        self.make_rigid_body(rect, circle)  # Mobjects will move with gravity
+        self.make_static_body(walls)  # Mobjects will stay in place
+        await self.update_loop()
+    
+    async def update_loop(self):
+        while True:
+            await self.wait()
     
     async def on_mouse_down(self, event):
         if not hasattr(self, 'dragging') or not hasattr(self, 'bbox') or not hasattr(self, 'starting_position'):
@@ -160,7 +175,6 @@ class ExampleScene(MovingCameraScene):
             dy = y - self.starting_position[1]
             self.camera.frame.shift(dx * RIGHT + dy * UP)
             self.starting_position = (x, y)
-            self.render_frame()
     
     async def on_mouse_up(self, event):
         if not hasattr(self, 'dragging') or not hasattr(self, 'bbox') or not hasattr(self, 'starting_position'):
@@ -178,4 +192,3 @@ await scene.render()
     </script>
   </body>
 </html>
-s
