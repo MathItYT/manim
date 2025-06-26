@@ -114,6 +114,7 @@ class ExampleScene(MovingCameraScene):
     async def construct(self):
         self.bbox = self.element.getBoundingClientRect()
         self.dragging = False
+        self.starting_position = None
         title = MathTex(r"\\bf{\\text{Hello, functions!}}", font_size=96)
         eq = MathTex("y =", "f(", "x", ")", tex_to_color_map={
             "y": YELLOW,
@@ -135,7 +136,7 @@ class ExampleScene(MovingCameraScene):
         self.render_frame()
     
     async def on_mouse_down(self, event):
-        if not hasattr(self, 'dragging') or not hasattr(self, 'bbox'):
+        if not hasattr(self, 'dragging') or not hasattr(self, 'bbox') or not hasattr(self, 'starting_position'):
             return
         if event.button == 0:  # Left mouse button
             self.dragging = True
@@ -144,10 +145,10 @@ class ExampleScene(MovingCameraScene):
                 x / self.bbox.width * config.frame_width - config.frame_width / 2,
                 config.frame_height / 2 - y / self.bbox.height * config.frame_height
             )
-            self.camera.move_to(x * RIGHT + y * UP)
+            self.starting_position = (x, y)
     
     async def on_mouse_move(self, event):
-        if not hasattr(self, 'dragging') or not hasattr(self, 'bbox'):
+        if not hasattr(self, 'dragging') or not hasattr(self, 'bbox') or not hasattr(self, 'starting_position'):
             return
         if self.dragging:
             x, y = event.offsetX, event.offsetY
@@ -155,19 +156,17 @@ class ExampleScene(MovingCameraScene):
                 x / self.bbox.width * config.frame_width - config.frame_width / 2,
                 config.frame_height / 2 - y / self.bbox.height * config.frame_height
             )
-            self.camera.move_to(x * RIGHT + y * UP)
+            dx = x - self.starting_position[0]
+            dy = y - self.starting_position[1]
+            self.camera.frame.shift(dx * RIGHT + dy * UP)
+            self.starting_position = (x, y)
+            self.render_frame()
     
     async def on_mouse_up(self, event):
-        if not hasattr(self, 'dragging') or not hasattr(self, 'bbox'):
+        if not hasattr(self, 'dragging') or not hasattr(self, 'bbox') or not hasattr(self, 'starting_position'):
             return
         if event.button == 0:  # Left mouse button
             self.dragging = False
-            x, y = event.offsetX, event.offsetY
-            x, y = (
-                x / self.bbox.width * config.frame_width - config.frame_width / 2,
-                config.frame_height / 2 - y / self.bbox.height * config.frame_height
-            )
-            self.camera.move_to(x * RIGHT + y * UP)
 
 
 scene = ExampleScene()
