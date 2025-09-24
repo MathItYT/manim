@@ -1,6 +1,6 @@
 [project]
 name = "manim-web"
-version = "0.1.8"
+version = "0.1.8.post0"
 description = "Animation engine for explanatory math videos, for the web."
 authors = [
   {name = "Benjamín Ubilla", email = "benjamin.ubilla@uc.cl"},
@@ -28,7 +28,7 @@ dependencies = [
     "importlib-metadata>=8.6.1 ; python_full_version < '3.10'",
     "isosurfaces>=0.1.0",
     "networkx>=2.6",
-    "numpy>=2.0,<=2.0.2",
+    "numpy<=2.2.5",
     "pillow>=9.1",
     "pygments>=2.0.0",
     "scipy>=1.13.0",
