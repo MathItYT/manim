@@ -83,13 +83,17 @@ class AbstractImageData:
         e = p0[0]
         f = p0[1]
         self.transform = [a, b, c, d, e, f]
-        self.image_data = camera.get_image_data(np.array(pixel_array, dtype=camera.pixel_array_dtype))
+        self.image_data = np.array(pixel_array, dtype=camera.pixel_array_dtype).tobytes()
+        self.width = pixel_array.shape[1]
+        self.height = pixel_array.shape[0]
     
     def to_dict(self) -> dict[str, Any]:
         return {
             "type": "AbstractImageData",
             "transform": self.transform,
             "image_data": self.image_data,
+            "width": self.width,
+            "height": self.height,
         }
 
 
@@ -197,23 +201,6 @@ class Camera:
             raise ValueError("La opacidad debe estar entre 0 y 1.")
         self._background_opacity = value
         self.init_background()
-    
-    def get_image_data(self, arr: np.ndarray):
-        """Convierte un arreglo de píxeles (np.ndarray) a un objeto ImageData del canvas.
-
-        Parameters
-        ----------
-        pixel_array : np.ndarray
-            Arreglo de forma (H, W, 4) con datos RGBA.
-
-        Returns
-        -------
-        ImageData
-            Objeto ImageData listo para usarse en ctx.putImageData().
-        """
-        js_buf = Uint8ClampedArray.new(arr.tobytes())
-        img = ImageData.new(js_buf, arr.shape[1], arr.shape[0])
-        return img
 
     def init_background(self):
         height = self.pixel_height

@@ -17,6 +17,7 @@ from manim.utils.color import BLACK, ManimColor, ParsableManimColor
 __all__ = [
     "SingleStringMathTex",
     "MathTex",
+    "Tex"
 ]
 
 
@@ -29,7 +30,7 @@ from textwrap import dedent
 
 from js import window
 
-from manim import config, logger
+from manim import logger
 from manim.constants import *
 from manim.mobject.svg.svg_mobject import SVGMobject
 from manim.mobject.types.vectorized_mobject import VGroup, VMobject
@@ -418,3 +419,21 @@ class MathTex(SingleStringMathTex):
 
     def sort_alphabetically(self):
         self.submobjects.sort(key=lambda m: m.get_tex_string())
+
+
+class Tex(MathTex):
+    def __init__(
+        self,
+        *tex_strings,
+        arg_separator: str = "",
+        substrings_to_isolate: Iterable[str] | None = None,
+        tex_to_color_map: dict[str, ManimColor] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            *["\\text{", *tex_strings, "}"],
+            arg_separator=arg_separator,
+            substrings_to_isolate=substrings_to_isolate,
+            tex_to_color_map=tex_to_color_map,
+            **kwargs,
+        )

@@ -14,7 +14,7 @@ from manim.mobject.geometry.arc import Arc
 from manim.mobject.geometry.line import Line
 from manim.mobject.mobject import Mobject
 from manim.mobject.opengl.opengl_compatibility import ConvertToOpenGL
-from manim.mobject.text.tex_mobject import MathTex
+from manim.mobject.text.tex_mobject import MathTex, Tex
 
 from ...animation.composition import AnimationGroup
 from ...animation.fading import FadeIn
@@ -167,7 +167,7 @@ class Brace(VMobjectFromSVGPath):
         -------
         :class:`~.Tex`
         """
-        text_mob = MathTex("\\text{", *text, "}")
+        text_mob = Tex(*text)
         self.put_at_tip(text_mob, **kwargs)
         return text_mob
 

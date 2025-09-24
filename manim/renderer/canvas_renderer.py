@@ -60,7 +60,7 @@ class CanvasRenderer:
         """The context of the canvas element of the renderer."""
         return self.camera.ctx
 
-    async def play(
+    def play(
         self,
         scene: Scene,
         *args: Animation | Mobject | _AnimationBuilder,
@@ -105,7 +105,7 @@ class CanvasRenderer:
             # In this case, as there is only a wait, it will be the length of the wait.
             self.freeze_current_frame(scene.duration)
         else:
-            await scene.play_internal()
+            scene.play_internal()
 
         self.num_plays += 1
     

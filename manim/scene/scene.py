@@ -9,7 +9,6 @@ __all__ = ["Scene"]
 import copy
 import inspect
 import random
-import asyncio
 from pyodide.ffi import create_proxy
 import types
 from queue import Queue
@@ -183,30 +182,6 @@ class Scene:
     
     def init_element(self, element, event_name):
         self.camera.init_element(element, event_name)
-        self.element.addEventListener(
-            "mousedown",
-            create_proxy(self.on_mouse_down),
-        )
-        self.element.addEventListener(
-            "mouseup",
-            create_proxy(self.on_mouse_up),
-        )
-        self.element.addEventListener(
-            "mousemove",
-            create_proxy(self.on_mouse_move),
-        )
-        self.element.addEventListener(
-            "click",
-            create_proxy(self.on_mouse_click),
-        )
-        self.element.addEventListener(
-            "keydown",
-            create_proxy(self.on_key_down),
-        )
-        self.element.addEventListener(
-            "keyup",
-            create_proxy(self.on_key_up),
-        )
 
     def render_frame(self) -> None:
         self.renderer.render(self, self.time, self.moving_mobjects)
@@ -215,7 +190,7 @@ class Scene:
     def element(self):
         return self.camera.element
 
-    async def render(self, preview: bool = False):
+    def render(self, preview: bool = False):
         """
         Renders this Scene.
 
@@ -224,9 +199,9 @@ class Scene:
         preview
             If true, opens scene in a file viewer.
         """
-        await self.setup()
+        self.setup()
         try:
-            await self.construct()
+            self.construct()
         except EndSceneEarlyException:
             pass
         except RerunSceneException:
@@ -234,7 +209,7 @@ class Scene:
             self.renderer.clear_screen()
             self.renderer.num_plays = 0
             return True
-        await self.tear_down()
+        self.tear_down()
         # We have to reset these settings in case of multiple renders.
         self.renderer.scene_finished(self)
 
@@ -251,52 +226,8 @@ class Scene:
         # If preview open up the render after rendering.
         if preview:
             config["preview"] = True
-    
-    async def on_mouse_click(
-        self,
-        event,
-    ) -> None:
-        """
-        Called when a mouse click event occurs.
 
-        Parameters
-        ----------
-        event
-            The mouse click event.
-        """
-        pass
-    
-    async def on_mouse_down(
-        self,
-        event,
-    ) -> None:
-        pass
-
-    async def on_mouse_up(
-        self,
-        event,
-    ) -> None:
-        pass
-
-    async def on_mouse_move(
-        self,
-        event,
-    ) -> None:
-        pass
-
-    async def on_key_down(
-        self,
-        event,
-    ) -> None:
-        pass
-
-    async def on_key_up(
-        self,
-        event,
-    ) -> None:
-        pass
-
-    async def setup(self):
+    def setup(self):
         """
         This is meant to be implemented by any scenes which
         are commonly subclassed, and have some common setup
@@ -304,7 +235,7 @@ class Scene:
         """
         pass
 
-    async def tear_down(self):
+    def tear_down(self):
         """
         This is meant to be implemented by any scenes which
         are commonly subclassed, and have some common method
@@ -312,7 +243,7 @@ class Scene:
         """
         pass
 
-    async def construct(self):
+    def construct(self):
         """Add content to the Scene.
 
         From within :meth:`Scene.construct`, display mobjects on screen by calling
@@ -961,7 +892,7 @@ class Scene:
         run_time = self.validate_run_time(run_time, self.play, "total run_time")
         return run_time
 
-    async def play(
+    def play(
         self,
         *args: Animation | Mobject | _AnimationBuilder,
         subcaption=None,
@@ -992,7 +923,7 @@ class Scene:
         """
 
         start_time = self.time
-        await self.renderer.play(self, *args, **kwargs)
+        self.renderer.play(self, *args, **kwargs)
         run_time = self.time - start_time
         if subcaption:
             if subcaption_duration is None:
@@ -1007,7 +938,7 @@ class Scene:
                 offset=-run_time + subcaption_offset,
             )
 
-    async def wait(
+    def wait(
         self,
         duration: float = DEFAULT_WAIT_TIME,
         stop_condition: Callable[[], bool] | None = None,
@@ -1035,7 +966,7 @@ class Scene:
         :class:`.Wait`, :meth:`.should_mobjects_update`
         """
         duration = self.validate_run_time(duration, self.wait, "duration")
-        await self.play(
+        self.play(
             Wait(
                 run_time=duration,
                 stop_condition=stop_condition,
@@ -1043,7 +974,7 @@ class Scene:
             )
         )
 
-    async def pause(self, duration: float = DEFAULT_WAIT_TIME):
+    def pause(self, duration: float = DEFAULT_WAIT_TIME):
         """Pauses the scene (i.e., displays a frozen frame).
 
         This is an alias for :meth:`.wait` with ``frozen_frame``
@@ -1059,9 +990,9 @@ class Scene:
         :meth:`.wait`, :class:`.Wait`
         """
         duration = self.validate_run_time(duration, self.pause, "duration")
-        await self.wait(duration=duration, frozen_frame=True)
+        self.wait(duration=duration, frozen_frame=True)
 
-    async def wait_until(self, stop_condition: Callable[[], bool], max_time: float = 60):
+    def wait_until(self, stop_condition: Callable[[], bool], max_time: float = 60):
         """Wait until a condition is satisfied, up to a given maximum duration.
 
         Parameters
@@ -1073,7 +1004,7 @@ class Scene:
             The maximum wait time in seconds.
         """
         max_time = self.validate_run_time(max_time, self.wait_until, "max_time")
-        await self.wait(max_time, stop_condition=stop_condition)
+        self.wait(max_time, stop_condition=stop_condition)
 
     def compile_animation_data(
         self,
@@ -1163,7 +1094,7 @@ class Scene:
             and self.animations[0].is_static_wait
         )
 
-    async def play_internal(self, skip_rendering: bool = False):
+    def play_internal(self, skip_rendering: bool = False):
         """
         This method is used to prep the animations for rendering,
         apply the arguments and parameters required to them,
@@ -1176,13 +1107,11 @@ class Scene:
         """
         self.duration = self.get_run_time(self.animations)
         for t in np.arange(0, self.duration, 1 / self.camera.frame_rate):
-            task = asyncio.create_task(asyncio.sleep(1 / self.camera.frame_rate))
             self.update_to_time(t)
             if not skip_rendering and not self.skip_animation_preview:
                 self.renderer.render(self, t, self.moving_mobjects)
             if self.stop_condition is not None and self.stop_condition():
                 break
-            await task
 
         for animation in self.animations:
             animation.finish()
